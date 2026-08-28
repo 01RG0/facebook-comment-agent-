@@ -29,7 +29,11 @@ export function createAiProvider(
       if (!key) throw new Error('OpenAI API key not configured')
       return new OpenAICompatProvider(key, config.model, config.provider, config.baseUrl)
     }
-    default:
-      throw new Error(`Unknown AI provider: ${config.provider}`)
+    default: {
+      // Custom provider registered by admin — always openai-compat type
+      const key = resolvedKey
+      if (!key) throw new Error(`API key required for custom provider: ${config.provider}`)
+      return new OpenAICompatProvider(key, config.model, config.provider, config.baseUrl)
+    }
   }
 }

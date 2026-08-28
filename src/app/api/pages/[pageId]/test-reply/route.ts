@@ -42,13 +42,19 @@ export async function POST(
         : undefined
     )
 
-    const reply = await provider.generateReply(
+    const result = await provider.generateReply(
       comment_text,
       settings.reply_instructions,
       settings.reply_language
     )
 
-    return NextResponse.json({ reply, provider: provider.providerName, model: provider.modelName })
+    return NextResponse.json({
+      reply: result.text,
+      provider: provider.providerName,
+      model: provider.modelName,
+      tokens: result.tokens,
+      latencyMs: result.latencyMs,
+    })
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
