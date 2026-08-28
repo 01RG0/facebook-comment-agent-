@@ -129,63 +129,134 @@ export function createCommentWorker() {
         }
       }
 
-      // ── 8. Resolve custom provider if needed ───────────────────────────────
-      let providerConfig = {
-        provider: (cfg.ai_provider as AiProviderName) ?? 'gemini',
-        model: cfg.ai_model ?? undefined,
-        baseUrl: undefined as string | undefined,
+      // ── 8. Resolve AI keys with fallback chain ────────────────────────────
+      const today = new Date().toISOString().split('T')[0]
+      const thisMonth = new Date().toISOString().slice(0, 7)
+
+      const { data: aiKeys } = await db
+        .from('ai_provider_keys')
+        .select(`
+          id, provider, base_url, model, api_key_enc, api_key_iv,
+          daily_request_limit, monthly_token_limit, consecutive_errors,
+          cost_per_1m_input, cost_per_1m_output,
+          ai_key_usage!left(requests, tokens_in, tokens_out, date)
+        `)
+        .eq('user_id', page.user_id)
+        .eq('is_active', true)
+        .order('priority', { ascending: true })
+
+      type KeyRow = {
+        id: string; provider: string; base_url: string | null; model: string | null
+        api_key_enc: string; api_key_iv: string
+        daily_request_limit: number | null; monthly_token_limit: number | null
+        consecutive_errors: number; cost_per_1m_input: number; cost_per_1m_output: number
+        ai_key_usage: { requests: number; tokens_in: number; tokens_out: number; date: string }[]
       }
 
-      // Check if it's a custom provider registered in DB
-      const builtins = ['gemini', 'mistral', 'openai', 'openai-compat']
-      if (!builtins.includes(cfg.ai_provider)) {
-        const { data: customProvider } = await db
-          .from('custom_ai_providers')
-          .select('provider_type, base_url, default_model, api_key_enc, api_key_iv')
-          .eq('name', cfg.ai_provider)
-          .eq('is_enabled', true)
-          .single()
-
-        if (customProvider) {
-          providerConfig = {
-            provider: customProvider.provider_type as AiProviderName,
-            model: cfg.ai_model ?? customProvider.default_model ?? undefined,
-            baseUrl: customProvider.base_url ?? undefined,
-          }
-          // Use provider's system key if user has no personal key
-          if (!cfg.ai_api_key_enc && customProvider.api_key_enc && customProvider.api_key_iv) {
-            cfg.ai_api_key_enc = customProvider.api_key_enc
-            cfg.ai_api_key_iv = customProvider.api_key_iv
-          }
+      const eligibleKeys = ((aiKeys ?? []) as KeyRow[]).filter(k => {
+        if (k.daily_request_limit !== null) {
+          const todayUsage = k.ai_key_usage?.find(u => u.date === today)
+          if ((todayUsage?.requests ?? 0) >= k.daily_request_limit) return false
         }
-      }
+        if (k.monthly_token_limit !== null) {
+          const monthTokens = k.ai_key_usage
+            ?.filter(u => u.date.startsWith(thisMonth))
+            .reduce((s, u) => s + (u.tokens_in ?? 0) + (u.tokens_out ?? 0), 0) ?? 0
+          if (monthTokens >= k.monthly_token_limit) return false
+        }
+        return true
+      })
 
-      // ── 9. Generate AI reply ───────────────────────────────────────────────
-      const aiProvider = createAiProvider(
-        providerConfig,
-        cfg.ai_api_key_enc && cfg.ai_api_key_iv
-          ? { enc: cfg.ai_api_key_enc, iv: cfg.ai_api_key_iv }
-          : undefined
-      )
-
-      let aiResult: Awaited<ReturnType<typeof aiProvider.generateReply>> | null = null
+      // Fall back to settings key if no ai_provider_keys configured
+      let aiResult: { text: string; tokens?: { promptTokens: number; completionTokens: number; totalTokens: number }; latencyMs?: number } | null = null
+      let usedKeyId: string | null = null
       let commentLogId: string | null = null
+      let resolvedProviderName = 'unknown'
+      let resolvedModelName = 'unknown'
       const t0 = Date.now()
 
-      try {
-        aiResult = await aiProvider.generateReply(message, cfg.reply_instructions, cfg.reply_language)
-        log.info({ provider: aiProvider.providerName, tokens: aiResult.tokens?.totalTokens }, 'AI reply generated')
-      } catch (aiErr) {
-        const errMsg = (aiErr as Error).message
-        log.error({ err: errMsg }, 'AI generation failed')
-        // Log the failed AI request
-        await insertAiUsageLog(db, {
-          userId: page.user_id, pageId, commentLogId: null,
-          provider: aiProvider.providerName, model: aiProvider.modelName,
-          success: false, errorMessage: errMsg, latencyMs: Date.now() - t0,
-        })
-        await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'failed', errorMessage: errMsg })
-        throw aiErr
+      if (eligibleKeys.length > 0) {
+        let lastErr: Error | null = null
+        for (const k of eligibleKeys) {
+          try {
+            const provider = createAiProvider(
+              { provider: k.provider, model: k.model ?? undefined, baseUrl: k.base_url ?? undefined },
+              { enc: k.api_key_enc, iv: k.api_key_iv }
+            )
+            aiResult = await provider.generateReply(message, cfg.reply_instructions, cfg.reply_language)
+            usedKeyId = k.id
+            resolvedProviderName = provider.providerName
+            resolvedModelName = provider.modelName
+            const tokensIn = aiResult.tokens?.promptTokens ?? 0
+            const tokensOut = aiResult.tokens?.completionTokens ?? 0
+            const cost = ((tokensIn / 1_000_000) * Number(k.cost_per_1m_input ?? 0))
+              + ((tokensOut / 1_000_000) * Number(k.cost_per_1m_output ?? 0))
+            await db.rpc('record_ai_key_usage', {
+              p_key_id: k.id, p_user_id: page.user_id,
+              p_tokens_in: tokensIn, p_tokens_out: tokensOut, p_cost: cost,
+            })
+            log.info({ provider: provider.providerName, keyId: k.id, tokens: aiResult.tokens?.totalTokens }, 'AI reply generated')
+            break
+          } catch (e) {
+            lastErr = e as Error
+            log.warn({ keyId: k.id, err: lastErr.message }, 'AI key failed, trying next')
+            await db.rpc('record_ai_key_error', { p_key_id: k.id, p_error_message: lastErr.message })
+          }
+        }
+        if (!aiResult) {
+          const errMsg = lastErr?.message ?? 'All AI keys failed'
+          await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'failed', errorMessage: errMsg })
+          throw new Error(errMsg)
+        }
+      } else {
+        // Legacy: use per-page settings key
+        let providerConfig = {
+          provider: (cfg.ai_provider as AiProviderName) ?? 'gemini',
+          model: cfg.ai_model ?? undefined,
+          baseUrl: undefined as string | undefined,
+        }
+        const builtins = ['gemini', 'mistral', 'openai', 'openai-compat']
+        if (!builtins.includes(cfg.ai_provider)) {
+          const { data: customProvider } = await db
+            .from('custom_ai_providers')
+            .select('provider_type, base_url, default_model, api_key_enc, api_key_iv')
+            .eq('name', cfg.ai_provider)
+            .eq('is_enabled', true)
+            .single()
+          if (customProvider) {
+            providerConfig = {
+              provider: customProvider.provider_type as AiProviderName,
+              model: cfg.ai_model ?? customProvider.default_model ?? undefined,
+              baseUrl: customProvider.base_url ?? undefined,
+            }
+            if (!cfg.ai_api_key_enc && customProvider.api_key_enc && customProvider.api_key_iv) {
+              cfg.ai_api_key_enc = customProvider.api_key_enc
+              cfg.ai_api_key_iv = customProvider.api_key_iv
+            }
+          }
+        }
+        const aiProvider = createAiProvider(
+          providerConfig,
+          cfg.ai_api_key_enc && cfg.ai_api_key_iv
+            ? { enc: cfg.ai_api_key_enc, iv: cfg.ai_api_key_iv }
+            : undefined
+        )
+        try {
+          aiResult = await aiProvider.generateReply(message, cfg.reply_instructions, cfg.reply_language)
+          resolvedProviderName = aiProvider.providerName
+          resolvedModelName = aiProvider.modelName
+          log.info({ provider: aiProvider.providerName, tokens: aiResult.tokens?.totalTokens }, 'AI reply generated (legacy key)')
+        } catch (aiErr) {
+          const errMsg = (aiErr as Error).message
+          log.error({ err: errMsg }, 'AI generation failed')
+          await insertAiUsageLog(db, {
+            userId: page.user_id, pageId, commentLogId: null,
+            provider: aiProvider.providerName, model: aiProvider.modelName,
+            success: false, errorMessage: errMsg, latencyMs: Date.now() - t0,
+          })
+          await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'failed', errorMessage: errMsg })
+          throw aiErr
+        }
       }
 
       // ── 10. Send private reply ─────────────────────────────────────────────
@@ -207,8 +278,8 @@ export function createCommentWorker() {
         commentId, pageId, userId: page.user_id, postId, from, message,
         status: 'replied',
         replyText: aiResult.text,
-        aiProvider: aiProvider.providerName,
-        aiModel: aiProvider.modelName,
+        aiProvider: resolvedProviderName,
+        aiModel: resolvedModelName,
         repliedAt: new Date().toISOString(),
       })
       commentLogId = logRow?.id ?? null
@@ -216,7 +287,7 @@ export function createCommentWorker() {
       // ── 13. Append AI usage log ────────────────────────────────────────────
       await insertAiUsageLog(db, {
         userId: page.user_id, pageId, commentLogId,
-        provider: aiProvider.providerName, model: aiProvider.modelName,
+        provider: resolvedProviderName, model: resolvedModelName,
         promptTokens: aiResult.tokens?.promptTokens,
         completionTokens: aiResult.tokens?.completionTokens,
         totalTokens: aiResult.tokens?.totalTokens,
