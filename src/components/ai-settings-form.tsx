@@ -10,6 +10,7 @@ interface Settings {
   id: string
   ai_provider: string
   ai_model: string | null
+  custom_base_url?: string | null
   has_custom_api_key: boolean
   reply_instructions: string
   reply_language: string
@@ -28,17 +29,27 @@ interface Settings {
   human_handoff_keywords?: string[] | null
 }
 
+interface HandoffItem {
+  id: string
+  commenter_name: string
+  comment_text: string
+  ai_draft: string | null
+  status: string
+  created_at: string
+}
+
 interface Props {
   pages: Page[]
   selectedPageId: string | null
   initialSettings: Settings | null
+  handoffItems: HandoffItem[]
 }
 
 const AI_PROVIDERS = [
   { value: 'gemini', label: 'Gemini (Google)' },
   { value: 'mistral', label: 'Mistral AI' },
   { value: 'openai', label: 'OpenAI' },
-  { value: 'openai-compat', label: 'OpenAI-compatible' },
+  { value: 'openai-compat', label: 'OpenAI-compatible (Custom)' },
 ]
 
 const LANGUAGES = [
@@ -53,7 +64,7 @@ const LANGUAGES = [
   { value: 'Indonesian', label: 'Indonesian' },
 ]
 
-export default function AiSettingsForm({ pages, selectedPageId, initialSettings }: Props) {
+export default function AiSettingsForm({ pages, selectedPageId, initialSettings, handoffItems }: Props) {
   const router = useRouter()
   const pathname = usePathname()
 
@@ -61,6 +72,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     ai_provider: initialSettings?.ai_provider ?? 'gemini',
     ai_model: initialSettings?.ai_model ?? '',
     ai_api_key: '',
+    custom_base_url: initialSettings?.custom_base_url ?? '',
     reply_instructions: initialSettings?.reply_instructions ?? 'You are a helpful assistant for this Facebook page. Reply warmly, concisely, and helpfully to comments.',
     reply_language: initialSettings?.reply_language ?? 'auto',
     reply_delay_seconds: initialSettings?.reply_delay_seconds ?? 0,
@@ -82,9 +94,71 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
   const [testing, setTesting] = useState(false)
   const [testComment, setTestComment] = useState('')
   const [testResult, setTestResult] = useState<{ reply: string; provider: string; model: string } | null>(null)
+  const [detectingModels, setDetectingModels] = useState(false)
+  const [detectedModels, setDetectedModels] = useState<string[]>([])
+  const [handoffList, setHandoffList] = useState<HandoffItem[]>(handoffItems)
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(handoffItems.map(h => [h.id, h.ai_draft ?? '']))
+  )
+  const [sendingHandoff, setSendingHandoff] = useState<string | null>(null)
 
   const handlePageChange = (id: string) => {
     router.push(`${pathname}?page=${id}`)
+  }
+
+  const handleDetectModels = async () => {
+    if (!selectedPageId) return
+    setDetectingModels(true)
+    setDetectedModels([])
+    try {
+      const res = await fetch(`/api/pages/${selectedPageId}/detect-models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: form.ai_provider,
+          base_url: form.custom_base_url || undefined,
+          ...(form.ai_api_key ? { api_key: form.ai_api_key } : {}),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setDetectedModels(data.models ?? [])
+      if (data.models?.length === 0) toast.info('No models found for this provider')
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setDetectingModels(false)
+    }
+  }
+
+  const handleSendHandoff = async (itemId: string) => {
+    setSendingHandoff(itemId)
+    try {
+      const res = await fetch(`/api/handoff/${itemId}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reply_text: replyDrafts[itemId] }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error)
+      toast.success('Reply sent')
+      setHandoffList(list => list.filter(h => h.id !== itemId))
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setSendingHandoff(null)
+    }
+  }
+
+  const handleDismissHandoff = async (itemId: string) => {
+    try {
+      const res = await fetch(`/api/handoff/${itemId}/reply`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error((await res.json()).error)
+      setHandoffList(list => list.filter(h => h.id !== itemId))
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
   }
 
   const handleSave = async (e: React.FormEvent) => {
@@ -95,6 +169,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     const payload: Record<string, unknown> = {
       ai_provider: form.ai_provider,
       ai_model: form.ai_model || null,
+      custom_base_url: form.custom_base_url || null,
       reply_instructions: form.reply_instructions,
       reply_language: form.reply_language,
       reply_delay_seconds: form.reply_delay_seconds,
@@ -178,6 +253,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
       )}
 
       {selectedPageId && (
+        <>
         <form onSubmit={handleSave} className="space-y-6">
           {/* AI Provider */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
@@ -188,7 +264,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Provider</label>
                 <select
                   value={form.ai_provider}
-                  onChange={e => setForm(f => ({ ...f, ai_provider: e.target.value }))}
+                  onChange={e => setForm(f => ({ ...f, ai_provider: e.target.value, ai_model: '', custom_base_url: '' }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {AI_PROVIDERS.map(p => (
@@ -201,15 +277,58 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Model <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
-                <input
-                  type="text"
-                  value={form.ai_model}
-                  onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
-                  placeholder={form.ai_provider === 'gemini' ? 'gemini-2.0-flash' : form.ai_provider === 'mistral' ? 'mistral-large-latest' : 'gpt-4o-mini'}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="flex gap-2">
+                  {detectedModels.length > 0 ? (
+                    <select
+                      value={form.ai_model}
+                      onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">-- select model --</option>
+                      {detectedModels.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={form.ai_model}
+                      onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
+                      placeholder={form.ai_provider === 'gemini' ? 'gemini-2.0-flash' : form.ai_provider === 'mistral' ? 'mistral-large-latest' : 'gpt-4o-mini'}
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleDetectModels}
+                    disabled={detectingModels}
+                    title="Auto-detect available models from provider"
+                    className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg transition border border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                  >
+                    {detectingModels ? '...' : '🔍 Detect'}
+                  </button>
+                </div>
+                {detectedModels.length > 0 && (
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">{detectedModels.length} models found</p>
+                )}
               </div>
             </div>
+
+            {(form.ai_provider === 'openai-compat') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Base URL <span className="text-gray-400 font-normal">(e.g. https://openrouter.ai/api/v1)</span>
+                </label>
+                <input
+                  type="url"
+                  value={form.custom_base_url}
+                  onChange={e => setForm(f => ({ ...f, custom_base_url: e.target.value }))}
+                  placeholder="https://your-provider.com/v1"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Any OpenAI-compatible API: OpenRouter, Together AI, Groq, Ollama, etc.
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -505,6 +624,60 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
             </button>
           </div>
         </form>
+
+        {/* Inline Handoff Queue */}
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-gray-900 dark:text-white">🤝 Pending Handoffs</h2>
+            {handoffList.length > 0 && (
+              <span className="text-xs font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded-full">
+                {handoffList.length} pending
+              </span>
+            )}
+          </div>
+
+          {handoffList.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No pending handoffs for this page.</p>
+          ) : (
+            <div className="space-y-4">
+              {handoffList.map(item => (
+                <div key={item.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{item.commenter_name}</span>
+                      <p className="text-sm text-gray-900 dark:text-white mt-0.5">{item.comment_text}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDismissHandoff(item.id)}
+                      className="text-xs text-gray-400 hover:text-red-500 transition shrink-0"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Reply</label>
+                    <textarea
+                      rows={2}
+                      value={replyDrafts[item.id] ?? ''}
+                      onChange={e => setReplyDrafts(d => ({ ...d, [item.id]: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSendHandoff(item.id)}
+                    disabled={sendingHandoff === item.id || !replyDrafts[item.id]}
+                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-medium rounded-lg transition"
+                  >
+                    {sendingHandoff === item.id ? 'Sending...' : 'Send Reply'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        </>
       )}
     </div>
   )

@@ -21,7 +21,7 @@ export async function GET(
 
   const { data: settings, error } = await supabase
     .from('settings')
-    .select('id, ai_provider, ai_model, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, updated_at')
+    .select('id, ai_provider, ai_model, custom_base_url, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, updated_at')
     .eq('page_id', params.pageId)
     .single()
 
@@ -49,7 +49,7 @@ export async function PATCH(
 
   const body = await req.json()
   const {
-    ai_provider, ai_model, ai_api_key,
+    ai_provider, ai_model, ai_api_key, custom_base_url,
     reply_instructions, reply_language,
     reply_delay_seconds, max_replies_per_hour,
     keyword_filter, blacklisted_user_ids, reply_to_own_posts_only,
@@ -61,6 +61,7 @@ export async function PATCH(
   const update: Record<string, unknown> = {}
   if (ai_provider !== undefined) update.ai_provider = ai_provider
   if (ai_model !== undefined) update.ai_model = ai_model
+  if (custom_base_url !== undefined) update.custom_base_url = custom_base_url || null
   if (reply_instructions !== undefined) update.reply_instructions = reply_instructions
   if (reply_language !== undefined) update.reply_language = reply_language
   if (reply_delay_seconds !== undefined) update.reply_delay_seconds = reply_delay_seconds

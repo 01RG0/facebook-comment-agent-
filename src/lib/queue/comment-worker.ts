@@ -247,7 +247,7 @@ export function createCommentWorker() {
         let providerConfig = {
           provider: (cfg.ai_provider as AiProviderName) ?? 'gemini',
           model: cfg.ai_model ?? undefined,
-          baseUrl: undefined as string | undefined,
+          baseUrl: (cfg as Record<string, unknown>).custom_base_url as string | undefined ?? undefined,
         }
         const builtins = ['gemini', 'mistral', 'openai', 'openai-compat']
         if (!builtins.includes(cfg.ai_provider)) {
