@@ -53,6 +53,9 @@ export async function PATCH(
     reply_instructions, reply_language,
     reply_delay_seconds, max_replies_per_hour,
     keyword_filter, blacklisted_user_ids, reply_to_own_posts_only,
+    reply_tone, reply_length, reply_blacklist_words,
+    review_mode_enabled, auto_retry_enabled, max_retry_attempts,
+    human_handoff_enabled, human_handoff_keywords,
   } = body
 
   const update: Record<string, unknown> = {}
@@ -65,6 +68,14 @@ export async function PATCH(
   if (keyword_filter !== undefined) update.keyword_filter = keyword_filter
   if (blacklisted_user_ids !== undefined) update.blacklisted_user_ids = blacklisted_user_ids
   if (reply_to_own_posts_only !== undefined) update.reply_to_own_posts_only = reply_to_own_posts_only
+  if (reply_tone !== undefined) update.reply_tone = reply_tone
+  if (reply_length !== undefined) update.reply_length = reply_length
+  if (reply_blacklist_words !== undefined) update.reply_blacklist_words = reply_blacklist_words
+  if (review_mode_enabled !== undefined) update.review_mode_enabled = review_mode_enabled
+  if (auto_retry_enabled !== undefined) update.auto_retry_enabled = auto_retry_enabled
+  if (max_retry_attempts !== undefined) update.max_retry_attempts = max_retry_attempts
+  if (human_handoff_enabled !== undefined) update.human_handoff_enabled = human_handoff_enabled
+  if (human_handoff_keywords !== undefined) update.human_handoff_keywords = human_handoff_keywords
 
   // Encrypt API key if provided
   if (ai_api_key) {

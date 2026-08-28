@@ -1,6 +1,7 @@
 import { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import AiSettingsForm from '@/components/ai-settings-form'
+import TeamMembersPanel from '@/components/team-members-panel'
 
 export const metadata: Metadata = { title: 'Settings' }
 
@@ -22,7 +23,14 @@ export default async function SettingsPage({ searchParams }: Props) {
   if (selectedPageId) {
     const { data } = await supabase
       .from('settings')
-      .select('id, ai_provider, ai_model, ai_api_key_enc, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only')
+      .select(`
+        id, ai_provider, ai_model, ai_api_key_enc,
+        reply_instructions, reply_language, reply_delay_seconds,
+        max_replies_per_hour, keyword_filter, blacklisted_user_ids,
+        reply_to_own_posts_only, reply_tone, reply_length,
+        reply_blacklist_words, review_mode_enabled, auto_retry_enabled,
+        max_retry_attempts, human_handoff_enabled, human_handoff_keywords
+      `)
       .eq('page_id', selectedPageId)
       .single()
     settings = data
@@ -33,7 +41,7 @@ export default async function SettingsPage({ searchParams }: Props) {
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
         <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">
-          Configure AI provider, reply behavior, and filters per page
+          Configure AI provider, reply behavior, filters, and team access per page
         </p>
       </div>
 
@@ -42,14 +50,20 @@ export default async function SettingsPage({ searchParams }: Props) {
           Connect a Facebook page first to configure settings.
         </div>
       ) : (
-        <AiSettingsForm
-          pages={pages}
-          selectedPageId={selectedPageId}
-          initialSettings={settings ? {
-            ...settings,
-            has_custom_api_key: !!(settings.ai_api_key_enc),
-          } : null}
-        />
+        <>
+          <AiSettingsForm
+            pages={pages}
+            selectedPageId={selectedPageId}
+            initialSettings={settings ? {
+              ...settings,
+              has_custom_api_key: !!(settings.ai_api_key_enc),
+            } : null}
+          />
+
+          {selectedPageId && (
+            <TeamMembersPanel pageId={selectedPageId} />
+          )}
+        </>
       )}
     </div>
   )

@@ -18,6 +18,14 @@ interface Settings {
   keyword_filter: string[] | null
   blacklisted_user_ids: string[] | null
   reply_to_own_posts_only: boolean
+  reply_tone?: string
+  reply_length?: string
+  reply_blacklist_words?: string[] | null
+  review_mode_enabled?: boolean
+  auto_retry_enabled?: boolean
+  max_retry_attempts?: number
+  human_handoff_enabled?: boolean
+  human_handoff_keywords?: string[] | null
 }
 
 interface Props {
@@ -60,6 +68,14 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     keyword_filter_raw: initialSettings?.keyword_filter?.join(', ') ?? '',
     blacklisted_user_ids_raw: initialSettings?.blacklisted_user_ids?.join(', ') ?? '',
     reply_to_own_posts_only: initialSettings?.reply_to_own_posts_only ?? false,
+    reply_tone: initialSettings?.reply_tone ?? 'friendly',
+    reply_length: initialSettings?.reply_length ?? 'medium',
+    reply_blacklist_words_raw: initialSettings?.reply_blacklist_words?.join(', ') ?? '',
+    review_mode_enabled: initialSettings?.review_mode_enabled ?? false,
+    auto_retry_enabled: initialSettings?.auto_retry_enabled ?? true,
+    max_retry_attempts: initialSettings?.max_retry_attempts ?? 3,
+    human_handoff_enabled: initialSettings?.human_handoff_enabled ?? false,
+    human_handoff_keywords_raw: initialSettings?.human_handoff_keywords?.join(', ') ?? '',
   })
 
   const [saving, setSaving] = useState(false)
@@ -90,6 +106,18 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
         ? form.blacklisted_user_ids_raw.split(',').map(s => s.trim()).filter(Boolean)
         : null,
       reply_to_own_posts_only: form.reply_to_own_posts_only,
+      reply_tone: form.reply_tone,
+      reply_length: form.reply_length,
+      reply_blacklist_words: form.reply_blacklist_words_raw
+        ? form.reply_blacklist_words_raw.split(',').map(s => s.trim()).filter(Boolean)
+        : null,
+      review_mode_enabled: form.review_mode_enabled,
+      auto_retry_enabled: form.auto_retry_enabled,
+      max_retry_attempts: form.max_retry_attempts,
+      human_handoff_enabled: form.human_handoff_enabled,
+      human_handoff_keywords: form.human_handoff_keywords_raw
+        ? form.human_handoff_keywords_raw.split(',').map(s => s.trim()).filter(Boolean)
+        : null,
     }
 
     if (form.ai_api_key) payload.ai_api_key = form.ai_api_key
@@ -217,7 +245,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
               </p>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Language</label>
                 <select
@@ -232,6 +260,35 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tone</label>
+                <select
+                  value={form.reply_tone}
+                  onChange={e => setForm(f => ({ ...f, reply_tone: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="friendly">Friendly</option>
+                  <option value="formal">Formal</option>
+                  <option value="casual">Casual</option>
+                  <option value="professional">Professional</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Length</label>
+                <select
+                  value={form.reply_length}
+                  onChange={e => setForm(f => ({ ...f, reply_length: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="short">Short (1-2 sentences)</option>
+                  <option value="medium">Medium (2-4 sentences)</option>
+                  <option value="long">Long (full paragraph)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Reply Delay (seconds)
                 </label>
@@ -244,6 +301,20 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-gray-500 mt-1">0 = reply immediately. Adds human-like delay.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Words to Avoid in Reply <span className="text-gray-400 font-normal">(comma-separated)</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.reply_blacklist_words_raw}
+                  onChange={e => setForm(f => ({ ...f, reply_blacklist_words_raw: e.target.value }))}
+                  placeholder="discount, free, click here"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">AI is instructed to avoid these words in replies.</p>
               </div>
             </div>
           </div>
@@ -307,6 +378,87 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+
+          {/* Automation & Review */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+            <h2 className="font-semibold text-gray-900 dark:text-white">⚙️ Automation & Review</h2>
+
+            <div className="grid sm:grid-cols-2 gap-6">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.review_mode_enabled}
+                  onChange={e => setForm(f => ({ ...f, review_mode_enabled: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Review Mode</span>
+                  <p className="text-xs text-gray-500 mt-0.5">AI drafts a reply but doesn&apos;t send — you approve first via the Handoff page</p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.auto_retry_enabled}
+                  onChange={e => setForm(f => ({ ...f, auto_retry_enabled: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Auto-retry on Failure</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Automatically retry failed comments before moving to DLQ</p>
+                </div>
+              </label>
+            </div>
+
+            {form.auto_retry_enabled && (
+              <div className="sm:w-1/3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max Retry Attempts</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={form.max_retry_attempts}
+                  onChange={e => setForm(f => ({ ...f, max_retry_attempts: parseInt(e.target.value) || 3 }))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Human Handoff */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+            <h2 className="font-semibold text-gray-900 dark:text-white">🤝 Human Handoff</h2>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.human_handoff_enabled}
+                onChange={e => setForm(f => ({ ...f, human_handoff_enabled: e.target.checked }))}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Human Handoff</span>
+                <p className="text-xs text-gray-500 mt-0.5">Route comments containing certain keywords to the Handoff page for manual review instead of AI reply</p>
+              </div>
+            </label>
+
+            {form.human_handoff_enabled && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Handoff Keywords <span className="text-gray-400 font-normal">(comma-separated)</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.human_handoff_keywords_raw}
+                  onChange={e => setForm(f => ({ ...f, human_handoff_keywords_raw: e.target.value }))}
+                  placeholder="complaint, refund, urgent, legal"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Comments matching these keywords are routed to humans, not the AI.</p>
+              </div>
+            )}
           </div>
 
           {/* Test Reply */}

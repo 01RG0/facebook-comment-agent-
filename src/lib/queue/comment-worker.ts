@@ -9,7 +9,7 @@ import { getRedisConnection } from './client'
 import type { AiProviderName } from '@/lib/ai/types'
 
 export function createCommentWorker() {
-  return new Worker<CommentJobPayload>(
+  const worker = new Worker<CommentJobPayload>(
     'comment-replies',
     async (job: Job<CommentJobPayload>) => {
       const { pageId, fbPageId, commentId, postId, from, message, createdTime } = job.data
@@ -58,7 +58,30 @@ export function createCommentWorker() {
         return
       }
 
-      // ── 4. Keyword filter ──────────────────────────────────────────────────
+      // ── 4. Human handoff keyword check ─────────────────────────────────────
+      if (cfg.human_handoff_enabled && cfg.human_handoff_keywords && cfg.human_handoff_keywords.length > 0) {
+        const text = message.toLowerCase()
+        const matchesHandoff = (cfg.human_handoff_keywords as string[]).some((kw: string) =>
+          text.includes(kw.toLowerCase())
+        )
+        if (matchesHandoff) {
+          log.info('Comment matches handoff keyword, routing to handoff queue')
+          await db.from('handoff_queue').upsert({
+            page_id: pageId,
+            user_id: page.user_id,
+            fb_comment_id: commentId,
+            fb_post_id: postId,
+            commenter_id: from.id,
+            commenter_name: from.name,
+            comment_text: message,
+            status: 'pending',
+          }, { onConflict: 'fb_comment_id' })
+          await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'skipped', skipReason: 'human_handoff' })
+          return
+        }
+      }
+
+      // ── 5. Keyword filter ──────────────────────────────────────────────────
       if (cfg.keyword_filter && cfg.keyword_filter.length > 0) {
         const text = message.toLowerCase()
         const match = (cfg.keyword_filter as string[]).some((kw: string) => text.includes(kw.toLowerCase()))
@@ -69,7 +92,7 @@ export function createCommentWorker() {
         }
       }
 
-      // ── 5. Admin usage limit check ─────────────────────────────────────────
+      // ── 6. Admin usage limit check ─────────────────────────────────────────
       const { data: limits } = await db
         .from('usage_limits')
         .select('*')
@@ -103,7 +126,7 @@ export function createCommentWorker() {
         }
       }
 
-      // ── 6. Per-page rate limit check ───────────────────────────────────────
+      // ── 7. Per-page rate limit check ───────────────────────────────────────
       const bucketHour = new Date(Math.floor(Date.now() / 3600000) * 3600000).toISOString()
       const { data: bucket } = await db
         .from('rate_limit_buckets')
@@ -119,7 +142,7 @@ export function createCommentWorker() {
         return
       }
 
-      // ── 7. Reply delay ─────────────────────────────────────────────────────
+      // ── 8. Reply delay ─────────────────────────────────────────────────────
       if (cfg.reply_delay_seconds > 0) {
         const jobAge = (Date.now() - job.timestamp) / 1000
         if (jobAge < cfg.reply_delay_seconds) {
@@ -129,7 +152,19 @@ export function createCommentWorker() {
         }
       }
 
-      // ── 8. Resolve AI keys with fallback chain ────────────────────────────
+      // ── 9. Build enhanced instructions with tone/length/blacklist ──────────
+      const tone = cfg.reply_tone ?? 'friendly'
+      const length = cfg.reply_length ?? 'medium'
+      const blacklistWords: string[] = cfg.reply_blacklist_words ?? []
+
+      const lengthGuide = length === 'short' ? '1-2 sentences' : length === 'long' ? 'a full paragraph' : '2-4 sentences'
+      let enhancedInstructions = cfg.reply_instructions
+      enhancedInstructions += `\n\nTone: ${tone}. Length: ${lengthGuide}.`
+      if (blacklistWords.length > 0) {
+        enhancedInstructions += ` Never use these words in your reply: ${blacklistWords.join(', ')}.`
+      }
+
+      // ── 10. Resolve AI keys with fallback chain ───────────────────────────
       const today = new Date().toISOString().split('T')[0]
       const thisMonth = new Date().toISOString().slice(0, 7)
 
@@ -167,7 +202,6 @@ export function createCommentWorker() {
         return true
       })
 
-      // Fall back to settings key if no ai_provider_keys configured
       let aiResult: { text: string; tokens?: { promptTokens: number; completionTokens: number; totalTokens: number }; latencyMs?: number } | null = null
       let usedKeyId: string | null = null
       let commentLogId: string | null = null
@@ -183,7 +217,7 @@ export function createCommentWorker() {
               { provider: k.provider, model: k.model ?? undefined, baseUrl: k.base_url ?? undefined },
               { enc: k.api_key_enc, iv: k.api_key_iv }
             )
-            aiResult = await provider.generateReply(message, cfg.reply_instructions, cfg.reply_language)
+            aiResult = await provider.generateReply(message, enhancedInstructions, cfg.reply_language)
             usedKeyId = k.id
             resolvedProviderName = provider.providerName
             resolvedModelName = provider.modelName
@@ -242,7 +276,7 @@ export function createCommentWorker() {
             : undefined
         )
         try {
-          aiResult = await aiProvider.generateReply(message, cfg.reply_instructions, cfg.reply_language)
+          aiResult = await aiProvider.generateReply(message, enhancedInstructions, cfg.reply_language)
           resolvedProviderName = aiProvider.providerName
           resolvedModelName = aiProvider.modelName
           log.info({ provider: aiProvider.providerName, tokens: aiResult.tokens?.totalTokens }, 'AI reply generated (legacy key)')
@@ -259,12 +293,30 @@ export function createCommentWorker() {
         }
       }
 
-      // ── 10. Send private reply ─────────────────────────────────────────────
+      // ── 11. Review mode: save draft to handoff queue, skip sending ─────────
+      if (cfg.review_mode_enabled) {
+        log.info('Review mode enabled — saving draft to handoff queue')
+        await db.from('handoff_queue').upsert({
+          page_id: pageId,
+          user_id: page.user_id,
+          fb_comment_id: commentId,
+          fb_post_id: postId,
+          commenter_id: from.id,
+          commenter_name: from.name,
+          comment_text: message,
+          ai_draft: aiResult.text,
+          status: 'pending',
+        }, { onConflict: 'fb_comment_id' })
+        await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'skipped', skipReason: 'review_mode' })
+        return
+      }
+
+      // ── 12. Send private reply ─────────────────────────────────────────────
       const pageToken = decrypt(page.access_token_enc, page.access_token_iv)
       await sendPrivateReply(commentId, aiResult.text, pageToken)
       log.info('Private reply sent')
 
-      // ── 11. Increment rate-limit + usage buckets ───────────────────────────
+      // ── 13. Increment rate-limit + usage buckets ───────────────────────────
       await db.rpc('increment_rate_bucket', { p_page_id: pageId, p_bucket_hour: bucketHour })
       await db.rpc('increment_usage_bucket', {
         p_user_id: page.user_id,
@@ -273,7 +325,7 @@ export function createCommentWorker() {
         p_tokens: aiResult.tokens?.totalTokens ?? 0,
       })
 
-      // ── 12. Log success to comments_log ───────────────────────────────────
+      // ── 14. Log success to comments_log ───────────────────────────────────
       const { data: logRow } = await upsertLog(db, {
         commentId, pageId, userId: page.user_id, postId, from, message,
         status: 'replied',
@@ -284,7 +336,9 @@ export function createCommentWorker() {
       })
       commentLogId = logRow?.id ?? null
 
-      // ── 13. Append AI usage log ────────────────────────────────────────────
+      void usedKeyId // used for future per-key analytics
+
+      // ── 15. Append AI usage log ────────────────────────────────────────────
       await insertAiUsageLog(db, {
         userId: page.user_id, pageId, commentLogId,
         provider: resolvedProviderName, model: resolvedModelName,
@@ -300,6 +354,44 @@ export function createCommentWorker() {
       concurrency: 5,
     }
   )
+
+  // ── DLQ: move to dead_letter_comments after all retries exhausted ──────────
+  worker.on('failed', async (job, err) => {
+    if (!job) return
+    const maxAttempts = job.opts?.attempts ?? 5
+    if (job.attemptsMade < maxAttempts) return
+
+    const { pageId, commentId, postId, from, message } = job.data
+    const db = getAdminClient()
+
+    try {
+      const { data: page } = await db
+        .from('pages')
+        .select('user_id')
+        .eq('id', pageId)
+        .single()
+
+      if (!page) return
+
+      await db.from('dead_letter_comments').upsert({
+        page_id: pageId,
+        user_id: page.user_id,
+        fb_comment_id: commentId,
+        fb_post_id: postId,
+        commenter_id: from.id,
+        commenter_name: from.name,
+        comment_text: message,
+        attempts: job.attemptsMade,
+        last_error: err.message,
+      }, { onConflict: 'fb_comment_id' })
+
+      logger.warn({ jobId: job.id, commentId, attempts: job.attemptsMade }, 'Moved to DLQ')
+    } catch (dlqErr) {
+      logger.error({ err: (dlqErr as Error).message }, 'Failed to write to DLQ')
+    }
+  })
+
+  return worker
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -384,5 +476,13 @@ function defaultSettings(pageId: string, userId: string) {
     keyword_filter: null,
     blacklisted_user_ids: null,
     reply_to_own_posts_only: false,
+    reply_tone: 'friendly',
+    reply_length: 'medium',
+    reply_blacklist_words: null,
+    review_mode_enabled: false,
+    auto_retry_enabled: true,
+    max_retry_attempts: 3,
+    human_handoff_enabled: false,
+    human_handoff_keywords: null,
   }
 }
