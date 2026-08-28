@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { exchangeCodeForToken, getLongLivedToken } from '@/lib/facebook/oauth'
 import { getMe, subscribePageToWebhook } from '@/lib/facebook/graph'
 import { encrypt } from '@/lib/crypto'
-import { cookies } from 'next/headers'
+import { getRedisConnection } from '@/lib/queue/client'
 import { logger } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
@@ -20,17 +20,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${appUrl}/dashboard?error=facebook_denied`)
   }
 
-  // ── CSRF check ─────────────────────────────────────────────────────────────
-  const cookieStore = cookies()
-  const savedState = cookieStore.get('fb_oauth_state')?.value
-
-  if (!state || !savedState || state !== savedState) {
-    logger.warn('Facebook OAuth state mismatch — possible CSRF')
+  // ── CSRF check via Redis ────────────────────────────────────────────────────
+  if (!state) {
+    logger.warn('Facebook OAuth missing state param')
     return NextResponse.redirect(`${appUrl}/dashboard?error=invalid_state`)
   }
 
-  // Clear the state cookie
-  cookieStore.delete('fb_oauth_state')
+  const redis = getRedisConnection()
+  const savedUserId = await redis.get(`fb:oauth:state:${state}`)
+
+  if (!savedUserId) {
+    logger.warn('Facebook OAuth state not found in Redis — expired or invalid')
+    return NextResponse.redirect(`${appUrl}/dashboard?error=invalid_state`)
+  }
+
+  await redis.del(`fb:oauth:state:${state}`)
 
   if (!code) {
     return NextResponse.redirect(`${appUrl}/dashboard?error=no_code`)
