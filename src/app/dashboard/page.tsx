@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PagesList from '@/components/pages-list'
 import ConnectFacebookBtn from '@/components/connect-facebook-btn'
@@ -11,6 +12,8 @@ export default async function DashboardPage() {
     .from('pages')
     .select('id, fb_page_id, page_name, page_picture_url, agent_enabled, webhook_subscribed, created_at')
     .order('created_at', { ascending: false })
+
+  if (!pages || pages.length === 0) redirect('/dashboard/onboarding')
 
   return (
     <div className="space-y-6 animate-fade-in">
