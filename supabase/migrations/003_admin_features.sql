@@ -2,7 +2,7 @@
 -- custom_ai_providers — admin-managed provider registry
 -- ============================================================
 create table public.custom_ai_providers (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   name          text not null unique,        -- slug used in settings (e.g. 'azure-gpt4')
   display_name  text not null,               -- shown in UI
   provider_type text not null default 'openai-compat'
@@ -34,7 +34,7 @@ create trigger trg_custom_providers_updated_at
 -- ai_usage_logs — per-request AI audit trail
 -- ============================================================
 create table public.ai_usage_logs (
-  id               uuid primary key default uuid_generate_v4(),
+  id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null references public.profiles(id) on delete cascade,
   page_id          uuid references public.pages(id) on delete set null,
   comment_log_id   uuid references public.comments_log(id) on delete set null,

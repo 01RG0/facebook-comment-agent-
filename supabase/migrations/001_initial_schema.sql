@@ -44,7 +44,7 @@ create trigger on_auth_user_created
 -- pages — connected Facebook Pages
 -- ============================================================
 create table public.pages (
-  id                  uuid primary key default uuid_generate_v4(),
+  id                  uuid primary key default gen_random_uuid(),
   user_id             uuid not null references public.profiles(id) on delete cascade,
   fb_page_id          text not null,
   page_name           text not null,
@@ -72,7 +72,7 @@ create index idx_pages_fb_page_id on public.pages(fb_page_id);
 -- settings — per-page AI and agent configuration
 -- ============================================================
 create table public.settings (
-  id                      uuid primary key default uuid_generate_v4(),
+  id                      uuid primary key default gen_random_uuid(),
   page_id                 uuid not null references public.pages(id) on delete cascade,
   user_id                 uuid not null references public.profiles(id) on delete cascade,
   ai_provider             text not null default 'gemini',
@@ -104,7 +104,7 @@ create index idx_settings_page_id on public.settings(page_id);
 -- comments_log — interaction history
 -- ============================================================
 create table public.comments_log (
-  id               uuid primary key default uuid_generate_v4(),
+  id               uuid primary key default gen_random_uuid(),
   page_id          uuid not null references public.pages(id) on delete cascade,
   user_id          uuid not null references public.profiles(id) on delete cascade,
   fb_comment_id    text not null unique,
