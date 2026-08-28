@@ -8,7 +8,7 @@ const log = pino({ level: 'info' })
 
 const RAILWAY_TOKEN = process.env.RAILWAY_TOKEN ?? ''
 const PROJECT_ID = process.env.RAILWAY_PROJECT_ID ?? '6e10bcc7-de16-4de2-b02d-b918cb6c6360'
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://web-production-ff15c.up.railway.app'
+const APP_URL = process.env.WEB_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://web-production-ff15c.up.railway.app'
 
 const SERVICE_IDS: Record<string, string> = {
   web:    process.env.RAILWAY_WEB_SERVICE_ID    ?? '4bc5d6ae-8f0b-4571-93a5-ccf28a4fb368',
