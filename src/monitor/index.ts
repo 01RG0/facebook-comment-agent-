@@ -237,8 +237,8 @@ async function checkWebhookSubscriptions() {
     if (activePage?.access_token_enc) {
       const token = decrypt(activePage.access_token_enc, activePage.access_token_iv)
       const res = await fetch(
-        `https://graph.facebook.com/v21.0/${activePage.fb_page_id}/subscribed_apps?access_token=${token}`,
-        { signal: AbortSignal.timeout(8_000) }
+        `https://graph.facebook.com/v21.0/${activePage.fb_page_id}/subscribed_apps`,
+        { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8_000) }
       )
       const data = await res.json() as { data?: { subscribed_fields?: string[] }[] }
       const subscribed = data.data?.some(app => app.subscribed_fields?.includes('feed'))
