@@ -41,50 +41,47 @@ export async function POST(req: NextRequest) {
   const queue = getCommentQueue()
   const db = createClient()
 
-  // Fire-and-forget enqueue (don't await in critical path)
-  setImmediate(async () => {
-    for (const entry of body.entry ?? []) {
-      const fbPageId = entry.id
+  for (const entry of body.entry ?? []) {
+    const fbPageId = entry.id
 
-      // Look up our internal page record
-      const { data: page } = await db
-        .from('pages')
-        .select('id, user_id, agent_enabled')
-        .eq('fb_page_id', fbPageId)
-        .maybeSingle()
+    // Look up our internal page record
+    const { data: page } = await db
+      .from('pages')
+      .select('id, user_id, agent_enabled')
+      .eq('fb_page_id', fbPageId)
+      .maybeSingle()
 
-      if (!page?.agent_enabled) continue
+    if (!page?.agent_enabled) continue
 
-      for (const change of entry.changes ?? []) {
-        const v = change.value
-        if (change.field !== 'feed') continue
-        if (v.item !== 'comment') continue
-        if (v.verb !== 'add') continue
-        if (!v.comment_id || !v.message || !v.from) continue
-        // Skip replies to comments (only top-level)
-        if (v.parent_id && v.parent_id !== v.post_id) continue
+    for (const change of entry.changes ?? []) {
+      const v = change.value
+      if (change.field !== 'feed') continue
+      if (v.item !== 'comment') continue
+      if (v.verb !== 'add') continue
+      if (!v.comment_id || !v.message || !v.from) continue
+      // Skip replies to comments (only top-level)
+      if (v.parent_id && v.parent_id !== v.post_id) continue
 
-        try {
-          await queue.add(
-            'reply-comment',
-            {
-              pageId: page.id,
-              fbPageId,
-              commentId: v.comment_id,
-              postId: v.post_id ?? '',
-              from: v.from,
-              message: v.message,
-              createdTime: v.created_time ?? Date.now() / 1000,
-            },
-            { jobId: v.comment_id } // dedup at queue level
-          )
-          logger.info({ commentId: v.comment_id, pageId: page.id }, 'Comment enqueued')
-        } catch (err) {
-          logger.error({ err: (err as Error).message, commentId: v.comment_id }, 'Enqueue failed')
-        }
+      try {
+        await queue.add(
+          'reply-comment',
+          {
+            pageId: page.id,
+            fbPageId,
+            commentId: v.comment_id,
+            postId: v.post_id ?? '',
+            from: v.from,
+            message: v.message,
+            createdTime: v.created_time ?? Date.now() / 1000,
+          },
+          { jobId: v.comment_id } // dedup at queue level
+        )
+        logger.info({ commentId: v.comment_id, pageId: page.id }, 'Comment enqueued')
+      } catch (err) {
+        logger.error({ err: (err as Error).message, commentId: v.comment_id }, 'Enqueue failed')
       }
     }
-  })
+  }
 
   return NextResponse.json({ status: 'ok' })
 }

@@ -43,13 +43,31 @@ export function createCommentWorker() {
         return
       }
 
-      const { data: settings } = await db
-        .from('settings')
-        .select('*')
-        .eq('page_id', pageId)
-        .maybeSingle()
+      // ── 2. Load settings, usage limits, and rate-limit bucket in parallel ──
+      const bucketHour = new Date(Math.floor(Date.now() / 3600000) * 3600000).toISOString()
 
-      const cfg = settings ?? defaultSettings(pageId, page.user_id)
+      const [settingsResult, limitsResult, bucketResult] = await Promise.all([
+        db
+          .from('settings')
+          .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords')
+          .eq('page_id', pageId)
+          .maybeSingle(),
+        db
+          .from('usage_limits')
+          .select('is_suspended, max_requests_per_day, max_tokens_per_day')
+          .eq('user_id', page.user_id)
+          .maybeSingle(),
+        db
+          .from('rate_limit_buckets')
+          .select('reply_count')
+          .eq('page_id', pageId)
+          .eq('bucket_hour', bucketHour)
+          .maybeSingle(),
+      ])
+
+      const cfg = settingsResult.data ?? defaultSettings(pageId, page.user_id)
+      const limits = limitsResult.data
+      const bucket = bucketResult.data
 
       // ── 3. Blacklist check ─────────────────────────────────────────────────
       if (cfg.blacklisted_user_ids?.includes(from.id)) {
@@ -93,12 +111,6 @@ export function createCommentWorker() {
       }
 
       // ── 6. Admin usage limit check ─────────────────────────────────────────
-      const { data: limits } = await db
-        .from('usage_limits')
-        .select('*')
-        .eq('user_id', page.user_id)
-        .maybeSingle()
-
       if (limits?.is_suspended) {
         log.warn({ userId: page.user_id }, 'User account suspended')
         await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'skipped', skipReason: 'account_suspended' })
@@ -127,14 +139,6 @@ export function createCommentWorker() {
       }
 
       // ── 7. Per-page rate limit check ───────────────────────────────────────
-      const bucketHour = new Date(Math.floor(Date.now() / 3600000) * 3600000).toISOString()
-      const { data: bucket } = await db
-        .from('rate_limit_buckets')
-        .select('reply_count')
-        .eq('page_id', pageId)
-        .eq('bucket_hour', bucketHour)
-        .maybeSingle()
-
       const currentCount = bucket?.reply_count ?? 0
       if (currentCount >= cfg.max_replies_per_hour) {
         log.warn({ currentCount, limit: cfg.max_replies_per_hour }, 'Rate limit reached')

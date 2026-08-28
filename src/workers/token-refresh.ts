@@ -26,8 +26,8 @@ export function scheduleTokenRefresh() {
 
       const { data: pages, error } = await db
         .from('pages')
-        .select('id, fb_page_id, access_token_enc, access_token_iv, updated_at')
-        .lt('updated_at', cutoff)
+        .select('id, fb_page_id, access_token_enc, access_token_iv, token_refreshed_at')
+        .or(`token_refreshed_at.is.null,token_refreshed_at.lt.${cutoff}`)
 
       if (error) {
         logger.error({ err: error.message }, 'Token refresh: failed to load pages')
@@ -44,7 +44,7 @@ export function scheduleTokenRefresh() {
 
           await db
             .from('pages')
-            .update({ access_token_enc: enc, access_token_iv: iv })
+            .update({ access_token_enc: enc, access_token_iv: iv, token_refreshed_at: new Date().toISOString() })
             .eq('id', page.id)
 
           logger.info({ pageId: page.id }, 'Token refreshed')
