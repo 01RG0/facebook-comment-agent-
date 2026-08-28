@@ -4,10 +4,9 @@ const FACEBOOK_OAUTH_URL = 'https://www.facebook.com/v21.0/dialog/oauth'
 const FACEBOOK_TOKEN_URL = 'https://graph.facebook.com/v21.0/oauth/access_token'
 const PERMISSIONS = [
   'pages_show_list',
-  'pages_read_engagement',
-  'pages_manage_posts',
+  'pages_manage_metadata',
   'pages_messaging',
-  'pages_read_user_content',
+  'business_management',
 ].join(',')
 
 export function generateState(): string {
