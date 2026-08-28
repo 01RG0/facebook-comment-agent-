@@ -19,3 +19,10 @@ source = "."
 
 [services.deploy]
 startCommand = "npm run worker:prod"
+
+[[services]]
+name = "monitor"
+source = "."
+
+[services.deploy]
+startCommand = "npm run monitor:prod"
