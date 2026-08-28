@@ -15,7 +15,6 @@ const navLinks = [
   { href: '/dashboard/activity', label: 'Activity', icon: '📊' },
   { href: '/dashboard/analytics', label: 'Analytics', icon: '📈' },
   { href: '/dashboard/dlq', label: 'Failed', icon: '⚠️' },
-  { href: '/dashboard/handoff', label: 'Handoff', icon: '🤝' },
   { href: '/dashboard/ai-keys', label: 'AI Keys', icon: '🔑' },
   { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
 ]
