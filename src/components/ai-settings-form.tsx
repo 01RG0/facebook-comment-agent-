@@ -33,6 +33,8 @@ interface Settings {
   public_comment_reply_enabled?: boolean
   public_comment_reply_text?: string | null
   public_comment_on_approval?: boolean
+  public_comment_reply_mode?: string | null
+  public_comment_ai_instructions?: string | null
 }
 
 interface HandoffItem {
@@ -182,6 +184,8 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
     human_handoff_enabled: initialSettings?.human_handoff_enabled ?? false,
     human_handoff_keywords_raw: initialSettings?.human_handoff_keywords?.join(', ') ?? '',
     public_comment_reply_enabled: initialSettings?.public_comment_reply_enabled ?? false,
+    public_comment_reply_mode: initialSettings?.public_comment_reply_mode ?? 'static',
+    public_comment_ai_instructions: initialSettings?.public_comment_ai_instructions ?? '',
     public_comment_reply_text: initialSettings?.public_comment_reply_text ?? 'تم إرسال التفاصيل برايفت 📩',
     public_comment_on_approval: initialSettings?.public_comment_on_approval ?? true,
   })
@@ -290,6 +294,8 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
         ? form.human_handoff_keywords_raw.split(',').map(s => s.trim()).filter(Boolean)
         : null,
       public_comment_reply_enabled: form.public_comment_reply_enabled,
+      public_comment_reply_mode: form.public_comment_reply_mode,
+      public_comment_ai_instructions: form.public_comment_ai_instructions || null,
       public_comment_reply_text: form.public_comment_reply_text,
       public_comment_on_approval: form.public_comment_on_approval,
     }
@@ -714,18 +720,83 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
             </label>
 
             {form.public_comment_reply_enabled && (
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Mode selector */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Text</label>
-                  <input
-                    type="text"
-                    value={form.public_comment_reply_text}
-                    onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
-                    placeholder="تم إرسال التفاصيل برايفت 📩"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    dir="rtl"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Reply Mode</label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="pub_mode"
+                        value="static"
+                        checked={form.public_comment_reply_mode === 'static'}
+                        onChange={() => setForm(f => ({ ...f, public_comment_reply_mode: 'static' }))}
+                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Static text</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="pub_mode"
+                        value="ai"
+                        checked={form.public_comment_reply_mode === 'ai'}
+                        onChange={() => setForm(f => ({ ...f, public_comment_reply_mode: 'ai' }))}
+                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">AI-generated (short)</span>
+                    </label>
+                  </div>
                 </div>
+
+                {form.public_comment_reply_mode === 'static' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Text</label>
+                    <input
+                      type="text"
+                      value={form.public_comment_reply_text ?? ''}
+                      onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
+                      placeholder="تم إرسال التفاصيل برايفت 📩"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      dir="rtl"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Same text is posted on every comment.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        AI Instructions for Public Reply
+                      </label>
+                      <textarea
+                        value={form.public_comment_ai_instructions}
+                        onChange={e => setForm(f => ({ ...f, public_comment_ai_instructions: e.target.value }))}
+                        rows={5}
+                        placeholder={`أنت ترد على كومنت فيسبوك بشكل علني. اكتب رد قصير جدًا (جملة واحدة أو كلمتين بحد أقصى) باللغة العربية.\nقواعد صارمة: لا تذكر أسعار أو تفاصيل خاصة أو أرقام هواتف أو عناوين — هذه تُرسل برايفت.\nأمثلة: "سنة كام؟" / "بالتوفيق يارب" / "الاسبوع القادم 🥰" / "تابع البيدج 😊"\nاكتب الرد فقط — بدون أي شرح.`}
+                        dir="rtl"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Leave blank to use the default instructions. The comment text is automatically passed to the AI as context.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Fallback text <span className="text-gray-400 font-normal">(used if AI call fails)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={form.public_comment_reply_text ?? ''}
+                        onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
+                        placeholder="تم إرسال التفاصيل برايفت 📩"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        dir="rtl"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
@@ -735,7 +806,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
                   />
                   <div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Post when approving from Pending Handoffs</span>
-                    <p className="text-xs text-gray-500 mt-0.5">When Review mode is on, post this public comment at the same time you approve and send the private message — not before</p>
+                    <p className="text-xs text-gray-500 mt-0.5">When Review mode is on, post this public comment at the same time you approve and send the private message — not before. Handoff approvals always use the static text.</p>
                   </div>
                 </label>
               </div>

@@ -49,7 +49,7 @@ export function createCommentWorker() {
       const [settingsResult, limitsResult, bucketResult] = await Promise.all([
         db
           .from('settings')
-          .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_id, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text')
+          .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_id, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text, public_comment_reply_mode, public_comment_ai_instructions')
           .eq('page_id', pageId)
           .maybeSingle(),
         db
@@ -387,13 +387,37 @@ export function createCommentWorker() {
           }
         }
       }
-      // ── 12b. Post public comment reply (e.g. "تم إرسال التفاصيل برايفت") ──
+      // ── 12b. Post public comment reply ────────────────────────────────────
       const pubEnabled = (cfg as Record<string, unknown>).public_comment_reply_enabled as boolean | null
+      const pubMode = ((cfg as Record<string, unknown>).public_comment_reply_mode as string | null) ?? 'static'
       const pubText = (cfg as Record<string, unknown>).public_comment_reply_text as string | null
-      if (pubEnabled && pubText) {
+
+      if (pubEnabled) {
         try {
-          await postPublicCommentReply(commentId, pubText, pageToken)
-          log.info('Public comment reply posted')
+          let publicReplyText = pubText?.trim() || 'تم إرسال التفاصيل برايفت 📩'
+
+          if (pubMode === 'ai' && orderedKeys.length > 0) {
+            const defaultPublicInstructions = `أنت ترد على كومنت فيسبوك بشكل علني. اكتب رد قصير جدًا (جملة واحدة أو كلمتين بحد أقصى) باللغة العربية.
+قواعد صارمة: لا تذكر أسعار أو تفاصيل خاصة أو أرقام هواتف أو عناوين — هذه تُرسل برايفت.
+أمثلة على ردود مناسبة: "سنة كام؟" / "بالتوفيق يارب" / "الاسبوع القادم 🥰" / "تابع البيدج 😊" / "قريبًا ان شاء الله" / "ان شاء الله 🌹" / "تفاصيلها هتنزلكم" / "احجز وهيتوفر قريبا"
+اكتب الرد فقط — بدون أي شرح أو تكرار للسؤال.`
+            const customPublicInstructions = (cfg as Record<string, unknown>).public_comment_ai_instructions as string | null
+            const publicInstructions = customPublicInstructions?.trim() || defaultPublicInstructions
+            try {
+              const pubKey = orderedKeys[0]
+              const pubProvider = createAiProvider(
+                { provider: pubKey.provider, model: pubKey.model ?? undefined, baseUrl: pubKey.base_url ?? undefined },
+                { enc: pubKey.api_key_enc, iv: pubKey.api_key_iv }
+              )
+              const pubResult = await pubProvider.generateReply(message, publicInstructions, 'Arabic')
+              publicReplyText = pubResult.text.replace(/\[SEND_IMAGE:[^\]]*\]/g, '').trim() || publicReplyText
+            } catch (aiPubErr) {
+              log.warn({ err: (aiPubErr as Error).message }, 'AI public reply failed — using static fallback')
+            }
+          }
+
+          await postPublicCommentReply(commentId, publicReplyText, pageToken)
+          log.info({ mode: pubMode }, 'Public comment reply posted')
         } catch (pubErr) {
           log.warn({ err: (pubErr as Error).message }, 'Public comment reply failed — private reply already sent')
         }
