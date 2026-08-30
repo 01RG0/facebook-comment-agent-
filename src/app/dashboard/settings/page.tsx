@@ -26,6 +26,7 @@ export default async function SettingsPage({ searchParams }: Props) {
       .from('settings')
       .select(`
         id, ai_provider, ai_model, custom_base_url, ai_api_key_enc,
+        preferred_ai_key_ids,
         reply_instructions, reply_language, reply_delay_seconds,
         max_replies_per_hour, keyword_filter, blacklisted_user_ids,
         reply_to_own_posts_only, reply_tone, reply_length,
