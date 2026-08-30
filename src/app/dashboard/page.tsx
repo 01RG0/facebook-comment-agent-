@@ -8,10 +8,22 @@ export const metadata: Metadata = { title: 'Pages' }
 
 export default async function DashboardPage() {
   const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+
   const { data: pages } = await supabase
     .from('pages')
     .select('id, fb_page_id, page_name, page_picture_url, agent_enabled, webhook_subscribed, created_at')
     .order('created_at', { ascending: false })
+
+  // Team members own no pages — send them straight to the handoff queue
+  if (!pages || pages.length === 0) {
+    const { count } = await supabase
+      .from('team_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('member_id', user.id)
+    if ((count ?? 0) > 0) redirect('/dashboard/handoff')
+  }
 
   if (!pages || pages.length === 0) redirect('/dashboard/onboarding')
 

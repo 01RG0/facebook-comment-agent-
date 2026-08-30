@@ -8,9 +8,10 @@ import { cn } from '@/lib/utils'
 
 interface Props {
   user: { full_name: string | null; email: string; avatar_url: string | null }
+  isTeamMember?: boolean
 }
 
-const navLinks = [
+const ownerLinks = [
   { href: '/dashboard', label: 'Pages', icon: '📄' },
   { href: '/dashboard/activity', label: 'Activity', icon: '📊' },
   { href: '/dashboard/handoff', label: 'Handoff', icon: '🤝' },
@@ -20,7 +21,12 @@ const navLinks = [
   { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
 ]
 
-export default function DashboardNav({ user }: Props) {
+const memberLinks = [
+  { href: '/dashboard/handoff', label: 'Handoff', icon: '🤝' },
+]
+
+export default function DashboardNav({ user, isTeamMember = false }: Props) {
+  const navLinks = isTeamMember ? memberLinks : ownerLinks
   const pathname = usePathname()
   const router = useRouter()
 
