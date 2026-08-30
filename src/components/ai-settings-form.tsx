@@ -245,6 +245,27 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
 
   return (
     <div className="space-y-6">
+      {/* How it works banner */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+        <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide mb-2">How the agent works</p>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-blue-800 dark:text-blue-200">
+          <span className="inline-flex items-center gap-1.5 bg-white dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-1.5 font-medium">
+            <span>💬</span> Someone comments on your Facebook post
+          </span>
+          <span className="text-blue-400 dark:text-blue-500 font-bold">→</span>
+          <span className="inline-flex items-center gap-1.5 bg-white dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-1.5 font-medium">
+            <span>🤖</span> AI generates a reply using your instructions
+          </span>
+          <span className="text-blue-400 dark:text-blue-500 font-bold">→</span>
+          <span className="inline-flex items-center gap-1.5 bg-white dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-1.5 font-medium">
+            <span>📩</span> Sent as a <strong>private Messenger message</strong> to the commenter
+          </span>
+        </div>
+        <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+          Replies are always <strong>private</strong> — they arrive in the commenter&apos;s Messenger inbox, not as a public reply on the post.
+        </p>
+      </div>
+
       {/* Page selector */}
       {pages.length > 1 && (
         <div>
@@ -379,10 +400,13 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
 
           {/* Reply Behavior */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900 dark:text-white">💬 Reply Behavior</h2>
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-white">💬 Private Message Behavior</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Controls how the AI writes the private Messenger reply sent to each commenter.</p>
+            </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">System Instructions</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">AI Instructions</label>
               <textarea
                 value={form.reply_instructions}
                 onChange={e => setForm(f => ({ ...f, reply_instructions: e.target.value }))}
@@ -390,7 +414,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Tell the AI who it is and how to respond.
+                Describe the AI&apos;s persona and how it should respond in private messages. The commenter&apos;s original comment is automatically included as context.
               </p>
             </div>
 
@@ -531,7 +555,10 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
 
           {/* Automation & Review */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900 dark:text-white">⚙️ Automation & Review</h2>
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-white">⚙️ Sending & Review</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Control when and how private messages are sent.</p>
+            </div>
 
             <div className="grid sm:grid-cols-2 gap-6">
               <label className="flex items-start gap-3 cursor-pointer">
@@ -542,8 +569,8 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
                   className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <div>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Review Mode</span>
-                  <p className="text-xs text-gray-500 mt-0.5">AI drafts a reply but doesn&apos;t send — you approve first via the Handoff page</p>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Review before sending</span>
+                  <p className="text-xs text-gray-500 mt-0.5">AI drafts the private message but holds it — you review and approve before it reaches the commenter&apos;s Messenger</p>
                 </div>
               </label>
 
@@ -556,7 +583,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Auto-retry on Failure</span>
-                  <p className="text-xs text-gray-500 mt-0.5">Automatically retry failed comments before moving to DLQ</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Retry if the private message fails to send before giving up</p>
                 </div>
               </label>
             </div>
@@ -578,7 +605,10 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
 
           {/* Human Handoff */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900 dark:text-white">🤝 Human Handoff</h2>
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-white">🤝 Human Handoff</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Skip AI for sensitive comments — you write the private reply yourself.</p>
+            </div>
 
             <label className="flex items-start gap-3 cursor-pointer">
               <input
@@ -589,14 +619,14 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
               />
               <div>
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Human Handoff</span>
-                <p className="text-xs text-gray-500 mt-0.5">Route comments containing certain keywords to the Handoff page for manual review instead of AI reply</p>
+                <p className="text-xs text-gray-500 mt-0.5">Comments matching trigger keywords are held — no private message is sent until you write and approve one manually in the Pending Handoffs section below</p>
               </div>
             </label>
 
             {form.human_handoff_enabled && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Handoff Keywords <span className="text-gray-400 font-normal">(comma-separated)</span>
+                  Trigger Keywords <span className="text-gray-400 font-normal">(comma-separated)</span>
                 </label>
                 <input
                   type="text"
@@ -605,17 +635,19 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
                   placeholder="complaint, refund, urgent, legal"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-xs text-gray-500 mt-1">Comments matching these keywords are routed to humans, not the AI.</p>
+                <p className="text-xs text-gray-500 mt-1">Any comment containing these words skips AI and waits for your manual private reply.</p>
               </div>
             )}
           </div>
 
           {/* Test Reply */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900 dark:text-white">🧪 Test Reply Preview</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Generate a sample reply using current saved settings — nothing is sent to Facebook.
-            </p>
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-white">🧪 Test Private Message Preview</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                Simulate what private Messenger message the AI would send for a given comment — nothing is sent to Facebook.
+              </p>
+            </div>
             <div className="flex gap-3">
               <input
                 type="text"
@@ -658,7 +690,10 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
         {/* Inline Handoff Queue */}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900 dark:text-white">🤝 Pending Handoffs</h2>
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-white">🤝 Pending Handoffs</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Comments held for manual reply — edit the draft and click Send to deliver it as a private Messenger message.</p>
+            </div>
             {handoffList.length > 0 && (
               <span className="text-xs font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded-full">
                 {handoffList.length} pending
