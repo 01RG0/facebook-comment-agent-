@@ -221,13 +221,11 @@ export function createCommentWorker() {
       let resolvedModelName = 'unknown'
       const t0 = Date.now()
 
-      // If a preferred key is set, try it first; then fall back to remaining priority chain
-      const preferredId = cfg.preferred_ai_key_id as string | null | undefined
-      let orderedKeys = eligibleKeys
-      if (preferredId) {
-        const preferred = eligibleKeys.find(k => k.id === preferredId)
-        if (preferred) orderedKeys = [preferred, ...eligibleKeys.filter(k => k.id !== preferredId)]
-      }
+      // If preferred keys are set, restrict to that subset (keeps their priority order)
+      const preferredIds = ((cfg as Record<string, unknown>).preferred_ai_key_ids as string[] | null | undefined) ?? []
+      const orderedKeys = preferredIds.length > 0
+        ? eligibleKeys.filter(k => preferredIds.includes(k.id))
+        : eligibleKeys
 
       if (orderedKeys.length > 0) {
         let lastErr: Error | null = null
@@ -504,6 +502,6 @@ function defaultSettings(pageId: string, userId: string) {
     max_retry_attempts: 3,
     human_handoff_enabled: false,
     human_handoff_keywords: null,
-    preferred_ai_key_id: null,
+    preferred_ai_key_ids: [],
   }
 }

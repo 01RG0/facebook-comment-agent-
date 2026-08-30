@@ -14,7 +14,7 @@ interface Settings {
   ai_model: string | null
   custom_base_url?: string | null
   has_custom_api_key: boolean
-  preferred_ai_key_id?: string | null
+  preferred_ai_key_ids?: string[] | null
   reply_instructions: string
   reply_language: string
   reply_delay_seconds: number
@@ -83,7 +83,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
   const [form, setForm] = useState({
     ai_provider: initialSettings?.ai_provider ?? 'gemini',
     ai_model: initialSettings?.ai_model ?? '',
-    preferred_ai_key_id: initialSettings?.preferred_ai_key_id ?? '',
+    preferred_ai_key_ids: (initialSettings?.preferred_ai_key_ids as string[] | null) ?? [],
     custom_base_url: initialSettings?.custom_base_url ?? '',
     reply_instructions: initialSettings?.reply_instructions ?? 'You are a helpful assistant for this Facebook page. Reply warmly, concisely, and helpfully to comments.',
     reply_language: initialSettings?.reply_language ?? 'auto',
@@ -180,7 +180,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
     const payload: Record<string, unknown> = {
       ai_provider: form.ai_provider,
       ai_model: form.ai_model || null,
-      preferred_ai_key_id: form.preferred_ai_key_id || null,
+      preferred_ai_key_ids: form.preferred_ai_key_ids,
       custom_base_url: form.custom_base_url || null,
       reply_instructions: form.reply_instructions,
       reply_language: form.reply_language,
@@ -340,24 +340,40 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Preferred AI Key
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Allowed AI Keys
               </label>
-              <select
-                value={form.preferred_ai_key_id}
-                onChange={e => setForm(f => ({ ...f, preferred_ai_key_id: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Auto — use any active key (by priority)</option>
-                {savedKeys.map(k => (
-                  <option key={k.id} value={k.id}>
-                    {k.label} · {k.provider}{k.model ? ` / ${k.model}` : ''} {k.health !== 'healthy' ? `⚠️ ${k.health}` : ''}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Manage keys in <a href="/dashboard/ai-keys" className="text-blue-500 hover:underline">AI Keys</a>. Preferred key is tried first; falls back to the priority chain.
-              </p>
+              {savedKeys.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No keys added yet. <a href="/dashboard/ai-keys" className="text-blue-500 hover:underline">Add keys →</a>
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {savedKeys.map(k => (
+                    <label key={k.id} className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.preferred_ai_key_ids.includes(k.id)}
+                        onChange={e => setForm(f => ({
+                          ...f,
+                          preferred_ai_key_ids: e.target.checked
+                            ? [...f.preferred_ai_key_ids, k.id]
+                            : f.preferred_ai_key_ids.filter(id => id !== k.id),
+                        }))}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        {k.label}
+                        <span className="text-gray-400 ml-1">· {k.provider}{k.model ? ` / ${k.model}` : ''}</span>
+                        {k.health !== 'healthy' && <span className="ml-1 text-yellow-500 text-xs">⚠ {k.health}</span>}
+                      </span>
+                    </label>
+                  ))}
+                  {form.preferred_ai_key_ids.length === 0 && (
+                    <p className="text-xs text-gray-400 mt-1">None selected — all active keys used (by priority).</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
