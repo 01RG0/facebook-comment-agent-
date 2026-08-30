@@ -15,11 +15,11 @@ export async function POST(
   const { reply_text } = await req.json()
   if (!reply_text?.trim()) return NextResponse.json({ error: 'reply_text required' }, { status: 400 })
 
+  // RLS allows both the page owner and reviewer/editor team members to read this row
   const { data: item } = await supabase
     .from('handoff_queue')
     .select('id, fb_comment_id, page_id, user_id, status')
     .eq('id', params.id)
-    .eq('user_id', user.id)
     .single()
 
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -69,11 +69,11 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // RLS allows owner + reviewer/editor team members to update
   const { error } = await supabase
     .from('handoff_queue')
     .update({ status: 'dismissed' })
     .eq('id', params.id)
-    .eq('user_id', user.id)
     .eq('status', 'pending')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

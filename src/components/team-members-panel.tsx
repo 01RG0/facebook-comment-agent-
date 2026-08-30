@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 interface Member {
   id: string
   member_email: string
-  role: 'viewer' | 'editor'
+  role: 'viewer' | 'editor' | 'reviewer'
   invited_at: string
   accepted_at: string | null
 }
@@ -19,7 +19,7 @@ export default function TeamMembersPanel({ pageId }: Props) {
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'viewer' | 'editor'>('viewer')
+  const [role, setRole] = useState<'viewer' | 'editor' | 'reviewer'>('reviewer')
   const [inviting, setInviting] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
 
@@ -77,6 +77,20 @@ export default function TeamMembersPanel({ pageId }: Props) {
         Invite team members to access this page&apos;s activity and handoff queue.
       </p>
 
+      {/* Role descriptions */}
+      <div className="grid sm:grid-cols-3 gap-2 text-xs">
+        {[
+          { r: 'reviewer', icon: '✅', label: 'Reviewer', desc: 'Can view, approve, edit, and send replies from the Handoff queue — access to Messenger replies' },
+          { r: 'viewer',   icon: '👁️', label: 'Viewer',   desc: 'Can view activity log only — read-only access, no actions' },
+          { r: 'editor',   icon: '✏️', label: 'Editor',   desc: 'Full reviewer access plus can edit page settings' },
+        ].map(({ r, icon, label, desc }) => (
+          <div key={r} className={`rounded-lg border p-2.5 ${role === r ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+            <p className="font-medium text-gray-800 dark:text-gray-200">{icon} {label}</p>
+            <p className="text-gray-500 dark:text-gray-400 mt-0.5">{desc}</p>
+          </div>
+        ))}
+      </div>
+
       <form onSubmit={handleInvite} className="flex gap-3 flex-wrap">
         <input
           type="email"
@@ -88,9 +102,10 @@ export default function TeamMembersPanel({ pageId }: Props) {
         />
         <select
           value={role}
-          onChange={e => setRole(e.target.value as 'viewer' | 'editor')}
+          onChange={e => setRole(e.target.value as 'viewer' | 'editor' | 'reviewer')}
           className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
+          <option value="reviewer">Reviewer</option>
           <option value="viewer">Viewer</option>
           <option value="editor">Editor</option>
         </select>
@@ -114,7 +129,12 @@ export default function TeamMembersPanel({ pageId }: Props) {
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-white">{m.member_email}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {m.role} · {m.accepted_at ? 'Accepted' : 'Pending invite'} · {new Date(m.invited_at).toLocaleDateString()}
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium mr-1 ${
+                    m.role === 'reviewer' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                    m.role === 'editor'   ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' :
+                    'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                  }`}>{m.role}</span>
+                  {m.accepted_at ? '✓ Active' : '⏳ Pending invite'} · {new Date(m.invited_at).toLocaleDateString()}
                 </p>
               </div>
               <button
