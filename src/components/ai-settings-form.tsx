@@ -99,6 +99,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
 - التخصص: رياضيات وإحصاء — ثانوي
 - المدينة: الإسكندرية
 - الصفحة: osamasaadallah.eg
+- facebook page: www.facebook.com/Osamasaadallah.eg
 
 ## المواد والمراحل المتاحة
 - تالتة ثانوي — رياضيات (علمي رياضة): متاح ✅
