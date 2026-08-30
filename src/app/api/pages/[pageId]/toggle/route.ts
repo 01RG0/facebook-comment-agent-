@@ -32,7 +32,7 @@ export async function POST(
         await subscribePageToWebhook(page.fb_page_id, pageToken)
         logger.info({ pageId: params.pageId }, 'Re-subscribed page to Facebook webhooks')
       } catch (err) {
-        logger.warn({ err: (err as Error).message, pageId: params.pageId }, 'Failed to re-subscribe webhook on toggle')
+        logger.warn({ errName: err instanceof Error ? err.name : 'unknown', pageId: params.pageId }, 'Failed to re-subscribe webhook on toggle')
       }
     }
   }
