@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq'
 import { createClient } from '@supabase/supabase-js'
+import WebSocket from 'ws'
 import pino from 'pino'
 import { getRedisConnection } from '@/lib/queue/client'
 import { decrypt } from '@/lib/crypto'
@@ -18,7 +19,8 @@ const SERVICE_IDS: Record<string, string> = {
 
 const db = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { global: { headers: {} }, realtime: { transport: WebSocket as any } }
 )
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

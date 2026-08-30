@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import WebSocket from 'ws'
 
 // Service role client — bypasses RLS. Only used in the worker process.
 // Never import this file from Next.js API routes or client code.
@@ -9,7 +10,7 @@ export function getAdminClient(): SupabaseClient {
     _admin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
+      { auth: { autoRefreshToken: false, persistSession: false }, realtime: { transport: WebSocket as any } }
     )
   }
   return _admin
