@@ -84,6 +84,20 @@ export async function sendPrivateImageReply(
   return res.json()
 }
 
+export async function postPublicCommentReply(
+  commentId: string,
+  message: string,
+  pageToken: string
+): Promise<{ id: string }> {
+  const res = await fetch(`${GRAPH_BASE}/${commentId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, access_token: pageToken }),
+  })
+  if (!res.ok) throw new Error(`Public comment reply failed: ${await res.text()}`)
+  return res.json()
+}
+
 export async function refreshLongLivedToken(
   pageId: string,
   pageToken: string

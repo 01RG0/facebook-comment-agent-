@@ -30,6 +30,8 @@ interface Settings {
   max_retry_attempts?: number
   human_handoff_enabled?: boolean
   human_handoff_keywords?: string[] | null
+  public_comment_reply_enabled?: boolean
+  public_comment_reply_text?: string | null
 }
 
 interface HandoffItem {
@@ -178,6 +180,8 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
     max_retry_attempts: initialSettings?.max_retry_attempts ?? 3,
     human_handoff_enabled: initialSettings?.human_handoff_enabled ?? false,
     human_handoff_keywords_raw: initialSettings?.human_handoff_keywords?.join(', ') ?? '',
+    public_comment_reply_enabled: initialSettings?.public_comment_reply_enabled ?? false,
+    public_comment_reply_text: initialSettings?.public_comment_reply_text ?? 'تم إرسال التفاصيل برايفت 📩',
   })
 
   const [saving, setSaving] = useState(false)
@@ -283,6 +287,8 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
       human_handoff_keywords: form.human_handoff_keywords_raw
         ? form.human_handoff_keywords_raw.split(',').map(s => s.trim()).filter(Boolean)
         : null,
+      public_comment_reply_enabled: form.public_comment_reply_enabled,
+      public_comment_reply_text: form.public_comment_reply_text,
     }
 
     try {
@@ -679,6 +685,41 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
                   value={form.max_retry_attempts}
                   onChange={e => setForm(f => ({ ...f, max_retry_attempts: parseInt(e.target.value) || 3 }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Public Comment Reply */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-white">💬 Public Comment Reply</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">After sending the private Messenger message, also post a short visible reply on the public comment so the student knows to check their inbox.</p>
+            </div>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.public_comment_reply_enabled}
+                onChange={e => setForm(f => ({ ...f, public_comment_reply_enabled: e.target.checked }))}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Public Comment Reply</span>
+                <p className="text-xs text-gray-500 mt-0.5">Post this text as a public reply on the Facebook comment after the private message is sent</p>
+              </div>
+            </label>
+
+            {form.public_comment_reply_enabled && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Text</label>
+                <input
+                  type="text"
+                  value={form.public_comment_reply_text}
+                  onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
+                  placeholder="تم إرسال التفاصيل برايفت 📩"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  dir="rtl"
                 />
               </div>
             )}

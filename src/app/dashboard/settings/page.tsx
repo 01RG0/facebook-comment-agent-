@@ -31,7 +31,8 @@ export default async function SettingsPage({ searchParams }: Props) {
         max_replies_per_hour, keyword_filter, blacklisted_user_ids,
         reply_to_own_posts_only, reply_tone, reply_length,
         reply_blacklist_words, review_mode_enabled, auto_retry_enabled,
-        max_retry_attempts, human_handoff_enabled, human_handoff_keywords
+        max_retry_attempts, human_handoff_enabled, human_handoff_keywords,
+        public_comment_reply_enabled, public_comment_reply_text
       `)
       .eq('page_id', selectedPageId)
       .single()

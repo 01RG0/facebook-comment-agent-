@@ -1,7 +1,7 @@
 import { Worker, type Job } from 'bullmq'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createAiProvider } from '@/lib/ai/factory'
-import { sendPrivateReply, sendPrivateImageReply } from '@/lib/facebook/graph'
+import { sendPrivateReply, sendPrivateImageReply, postPublicCommentReply } from '@/lib/facebook/graph'
 import { decrypt } from '@/lib/crypto'
 import { logger } from '@/lib/logger'
 import type { CommentJobPayload } from '@/types/meta'
@@ -49,7 +49,7 @@ export function createCommentWorker() {
       const [settingsResult, limitsResult, bucketResult] = await Promise.all([
         db
           .from('settings')
-          .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_id, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords')
+          .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_id, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text')
           .eq('page_id', pageId)
           .maybeSingle(),
         db
@@ -368,6 +368,18 @@ export function createCommentWorker() {
           }
         }
       }
+      // ── 12b. Post public comment reply (e.g. "تم إرسال التفاصيل برايفت") ──
+      const pubEnabled = (cfg as Record<string, unknown>).public_comment_reply_enabled as boolean | null
+      const pubText = (cfg as Record<string, unknown>).public_comment_reply_text as string | null
+      if (pubEnabled && pubText) {
+        try {
+          await postPublicCommentReply(commentId, pubText, pageToken)
+          log.info('Public comment reply posted')
+        } catch (pubErr) {
+          log.warn({ err: (pubErr as Error).message }, 'Public comment reply failed — private reply already sent')
+        }
+      }
+
       log.info('Private reply sent')
 
       // ── 13. Increment rate-limit + usage buckets ───────────────────────────

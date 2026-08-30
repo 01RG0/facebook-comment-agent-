@@ -21,7 +21,7 @@ export async function GET(
 
   const { data: settings, error } = await supabase
     .from('settings')
-    .select('id, ai_provider, ai_model, custom_base_url, ai_api_key_enc, preferred_ai_key_ids, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, updated_at')
+    .select('id, ai_provider, ai_model, custom_base_url, ai_api_key_enc, preferred_ai_key_ids, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text, updated_at')
     .eq('page_id', params.pageId)
     .single()
 
@@ -57,6 +57,7 @@ export async function PATCH(
     reply_tone, reply_length, reply_blacklist_words,
     review_mode_enabled, auto_retry_enabled, max_retry_attempts,
     human_handoff_enabled, human_handoff_keywords,
+    public_comment_reply_enabled, public_comment_reply_text,
   } = body
 
   const update: Record<string, unknown> = {}
@@ -79,6 +80,8 @@ export async function PATCH(
   if (max_retry_attempts !== undefined) update.max_retry_attempts = max_retry_attempts
   if (human_handoff_enabled !== undefined) update.human_handoff_enabled = human_handoff_enabled
   if (human_handoff_keywords !== undefined) update.human_handoff_keywords = human_handoff_keywords
+  if (public_comment_reply_enabled !== undefined) update.public_comment_reply_enabled = public_comment_reply_enabled
+  if (public_comment_reply_text !== undefined) update.public_comment_reply_text = public_comment_reply_text || 'تم إرسال التفاصيل برايفت 📩'
 
   // Encrypt API key if provided
   if (ai_api_key) {
