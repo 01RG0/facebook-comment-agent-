@@ -21,7 +21,7 @@ export async function GET(
 
   const { data: settings, error } = await supabase
     .from('settings')
-    .select('id, ai_provider, ai_model, custom_base_url, ai_api_key_enc, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, updated_at')
+    .select('id, ai_provider, ai_model, custom_base_url, ai_api_key_enc, preferred_ai_key_id, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, updated_at')
     .eq('page_id', params.pageId)
     .single()
 
@@ -51,6 +51,7 @@ export async function PATCH(
   const body = await req.json()
   const {
     ai_provider, ai_model, ai_api_key, custom_base_url,
+    preferred_ai_key_id,
     reply_instructions, reply_language,
     reply_delay_seconds, max_replies_per_hour,
     keyword_filter, blacklisted_user_ids, reply_to_own_posts_only,
@@ -63,6 +64,7 @@ export async function PATCH(
   if (ai_provider !== undefined) update.ai_provider = ai_provider
   if (ai_model !== undefined) update.ai_model = ai_model
   if (custom_base_url !== undefined) update.custom_base_url = custom_base_url || null
+  if ('preferred_ai_key_id' in body) update.preferred_ai_key_id = preferred_ai_key_id || null
   if (reply_instructions !== undefined) update.reply_instructions = reply_instructions
   if (reply_language !== undefined) update.reply_language = reply_language
   if (reply_delay_seconds !== undefined) update.reply_delay_seconds = reply_delay_seconds

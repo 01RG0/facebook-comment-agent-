@@ -49,7 +49,7 @@ export function createCommentWorker() {
       const [settingsResult, limitsResult, bucketResult] = await Promise.all([
         db
           .from('settings')
-          .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords')
+          .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_id, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords')
           .eq('page_id', pageId)
           .maybeSingle(),
         db
@@ -221,9 +221,17 @@ export function createCommentWorker() {
       let resolvedModelName = 'unknown'
       const t0 = Date.now()
 
-      if (eligibleKeys.length > 0) {
+      // If a preferred key is set, try it first; then fall back to remaining priority chain
+      const preferredId = cfg.preferred_ai_key_id as string | null | undefined
+      let orderedKeys = eligibleKeys
+      if (preferredId) {
+        const preferred = eligibleKeys.find(k => k.id === preferredId)
+        if (preferred) orderedKeys = [preferred, ...eligibleKeys.filter(k => k.id !== preferredId)]
+      }
+
+      if (orderedKeys.length > 0) {
         let lastErr: Error | null = null
-        for (const k of eligibleKeys) {
+        for (const k of orderedKeys) {
           try {
             const provider = createAiProvider(
               { provider: k.provider, model: k.model ?? undefined, baseUrl: k.base_url ?? undefined },
@@ -496,5 +504,6 @@ function defaultSettings(pageId: string, userId: string) {
     max_retry_attempts: 3,
     human_handoff_enabled: false,
     human_handoff_keywords: null,
+    preferred_ai_key_id: null,
   }
 }

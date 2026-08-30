@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 
 interface Page { id: string; page_name: string }
+
+interface AiKey { id: string; label: string; provider: string; model: string | null; health: string }
 
 interface Settings {
   id: string
@@ -12,6 +14,7 @@ interface Settings {
   ai_model: string | null
   custom_base_url?: string | null
   has_custom_api_key: boolean
+  preferred_ai_key_id?: string | null
   reply_instructions: string
   reply_language: string
   reply_delay_seconds: number
@@ -68,10 +71,19 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
   const router = useRouter()
   const pathname = usePathname()
 
+  const [savedKeys, setSavedKeys] = useState<AiKey[]>([])
+
+  useEffect(() => {
+    fetch('/api/ai-keys')
+      .then(r => r.json())
+      .then((data: AiKey[]) => setSavedKeys(Array.isArray(data) ? data : []))
+      .catch(() => {})
+  }, [])
+
   const [form, setForm] = useState({
     ai_provider: initialSettings?.ai_provider ?? 'gemini',
     ai_model: initialSettings?.ai_model ?? '',
-    ai_api_key: '',
+    preferred_ai_key_id: initialSettings?.preferred_ai_key_id ?? '',
     custom_base_url: initialSettings?.custom_base_url ?? '',
     reply_instructions: initialSettings?.reply_instructions ?? 'You are a helpful assistant for this Facebook page. Reply warmly, concisely, and helpfully to comments.',
     reply_language: initialSettings?.reply_language ?? 'auto',
@@ -117,7 +129,6 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
         body: JSON.stringify({
           provider: form.ai_provider,
           base_url: form.custom_base_url || undefined,
-          ...(form.ai_api_key ? { api_key: form.ai_api_key } : {}),
         }),
       })
       const data = await res.json()
@@ -169,6 +180,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
     const payload: Record<string, unknown> = {
       ai_provider: form.ai_provider,
       ai_model: form.ai_model || null,
+      preferred_ai_key_id: form.preferred_ai_key_id || null,
       custom_base_url: form.custom_base_url || null,
       reply_instructions: form.reply_instructions,
       reply_language: form.reply_language,
@@ -195,8 +207,6 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
         : null,
     }
 
-    if (form.ai_api_key) payload.ai_api_key = form.ai_api_key
-
     try {
       const res = await fetch(`/api/pages/${selectedPageId}/settings`, {
         method: 'PATCH',
@@ -205,7 +215,6 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
       })
       if (!res.ok) throw new Error((await res.json()).error)
       toast.success('Settings saved')
-      setForm(f => ({ ...f, ai_api_key: '' }))
       router.refresh()
     } catch (err) {
       toast.error((err as Error).message)
@@ -332,17 +341,22 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                API Key {initialSettings?.has_custom_api_key && <span className="text-green-500 font-normal">(saved)</span>}
+                Preferred AI Key
               </label>
-              <input
-                type="password"
-                value={form.ai_api_key}
-                onChange={e => setForm(f => ({ ...f, ai_api_key: e.target.value }))}
-                placeholder={initialSettings?.has_custom_api_key ? '••••••••••• (leave blank to keep current)' : 'Uses system key if blank'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <select
+                value={form.preferred_ai_key_id}
+                onChange={e => setForm(f => ({ ...f, preferred_ai_key_id: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Auto — use any active key (by priority)</option>
+                {savedKeys.map(k => (
+                  <option key={k.id} value={k.id}>
+                    {k.label} · {k.provider}{k.model ? ` / ${k.model}` : ''} {k.health !== 'healthy' ? `⚠️ ${k.health}` : ''}
+                  </option>
+                ))}
+              </select>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Stored encrypted. Leave blank to use the system-level API key.
+                Manage keys in <a href="/dashboard/ai-keys" className="text-blue-500 hover:underline">AI Keys</a>. Preferred key is tried first; falls back to the priority chain.
               </p>
             </div>
           </div>
