@@ -176,7 +176,25 @@ export function createCommentWorker() {
         enhancedInstructions += ` Never use these words in your reply: ${blacklistWords.join(', ')}.`
       }
 
-      // ── 9b. Inject knowledge base assets into prompt ───────────────────────
+      // ── 9b. Inject previous conversation history for this student ────────────
+      const { data: history } = await db
+        .from('comments_log')
+        .select('comment_text, reply_text, replied_at')
+        .eq('page_id', pageId)
+        .eq('commenter_id', from.id)
+        .eq('status', 'replied')
+        .order('replied_at', { ascending: false })
+        .limit(5)
+
+      if (history && history.length > 0) {
+        enhancedInstructions += '\n\n=== PREVIOUS MESSAGES WITH THIS STUDENT ==='
+        for (const h of history.reverse()) {
+          enhancedInstructions += `\nStudent: ${h.comment_text}\nYou replied: ${h.reply_text}`
+        }
+        enhancedInstructions += '\n=== END HISTORY ==='
+      }
+
+      // ── 9d. Inject knowledge base assets into prompt ───────────────────────
       const { data: pageAssets } = await db
         .from('page_assets')
         .select('id, label, description, tags, file_url, file_type')
