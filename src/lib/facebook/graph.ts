@@ -32,7 +32,7 @@ export async function subscribePageToWebhook(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        subscribed_fields: 'feed,video_feed',
+        subscribed_fields: 'feed,videos',
         access_token: pageToken,
       }),
     }

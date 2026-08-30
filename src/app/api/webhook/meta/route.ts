@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     for (const change of entry.changes ?? []) {
       const v = change.value
-      if (change.field !== 'feed' && change.field !== 'video_feed') continue
+      if (change.field !== 'feed' && change.field !== 'videos') continue
       if (v.item !== 'comment') continue
       if (v.verb !== 'add') continue
       if (!v.comment_id || !v.message || !v.from) continue
