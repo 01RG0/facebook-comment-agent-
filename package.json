@@ -38,6 +38,7 @@
     "date-fns": "^3",
     "dotenv": "^16",
     "ioredis": "^5",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.462",
     "next": "^14.2.35",
     "openai": "^4",
