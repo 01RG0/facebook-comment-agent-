@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/crypto'
-import { sendPrivateReply } from '@/lib/facebook/graph'
+import { sendPrivateReply, postPublicCommentReply } from '@/lib/facebook/graph'
 
 export async function POST(
   req: NextRequest,
@@ -37,6 +37,21 @@ export async function POST(
 
   const pageToken = decrypt(page.access_token_enc, page.access_token_iv)
   await sendPrivateReply(item.fb_comment_id, reply_text, pageToken)
+
+  // Post public comment reply on approval if configured
+  const { data: settings } = await db
+    .from('settings')
+    .select('public_comment_reply_enabled, public_comment_reply_text, public_comment_on_approval')
+    .eq('page_id', item.page_id)
+    .single()
+
+  if (settings?.public_comment_reply_enabled && settings?.public_comment_on_approval && settings?.public_comment_reply_text) {
+    try {
+      await postPublicCommentReply(item.fb_comment_id, settings.public_comment_reply_text, pageToken)
+    } catch {
+      // non-fatal — private reply already sent
+    }
+  }
 
   await supabase
     .from('handoff_queue')

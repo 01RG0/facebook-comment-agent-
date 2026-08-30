@@ -32,6 +32,7 @@ interface Settings {
   human_handoff_keywords?: string[] | null
   public_comment_reply_enabled?: boolean
   public_comment_reply_text?: string | null
+  public_comment_on_approval?: boolean
 }
 
 interface HandoffItem {
@@ -182,6 +183,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
     human_handoff_keywords_raw: initialSettings?.human_handoff_keywords?.join(', ') ?? '',
     public_comment_reply_enabled: initialSettings?.public_comment_reply_enabled ?? false,
     public_comment_reply_text: initialSettings?.public_comment_reply_text ?? 'تم إرسال التفاصيل برايفت 📩',
+    public_comment_on_approval: initialSettings?.public_comment_on_approval ?? true,
   })
 
   const [saving, setSaving] = useState(false)
@@ -289,6 +291,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
         : null,
       public_comment_reply_enabled: form.public_comment_reply_enabled,
       public_comment_reply_text: form.public_comment_reply_text,
+      public_comment_on_approval: form.public_comment_on_approval,
     }
 
     try {
@@ -711,16 +714,30 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
             </label>
 
             {form.public_comment_reply_enabled && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Text</label>
-                <input
-                  type="text"
-                  value={form.public_comment_reply_text}
-                  onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
-                  placeholder="تم إرسال التفاصيل برايفت 📩"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  dir="rtl"
-                />
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Text</label>
+                  <input
+                    type="text"
+                    value={form.public_comment_reply_text}
+                    onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
+                    placeholder="تم إرسال التفاصيل برايفت 📩"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    dir="rtl"
+                  />
+                </div>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.public_comment_on_approval}
+                    onChange={e => setForm(f => ({ ...f, public_comment_on_approval: e.target.checked }))}
+                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Post when approving from Pending Handoffs</span>
+                    <p className="text-xs text-gray-500 mt-0.5">When Review mode is on, post this public comment at the same time you approve and send the private message — not before</p>
+                  </div>
+                </label>
               </div>
             )}
           </div>
