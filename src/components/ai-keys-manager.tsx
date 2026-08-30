@@ -112,6 +112,24 @@ export default function AiKeysManager() {
   const [saving, setSaving] = useState(false)
   const [detectingModels, setDetectingModels] = useState(false)
   const [detectedModels, setDetectedModels] = useState<string[]>([])
+  const [testingId, setTestingId] = useState<string | null>(null)
+  const [testStatus, setTestStatus] = useState<Record<string, 'ok' | 'error'>>({})
+
+  const handleTestKey = async (keyId: string) => {
+    setTestingId(keyId)
+    try {
+      const res = await fetch(`/api/ai-keys/${keyId}/detect-models`, { method: 'POST' })
+      const data = await res.json() as { models?: string[]; error?: string }
+      if (!res.ok || data.error) throw new Error(data.error ?? 'Request failed')
+      setTestStatus(s => ({ ...s, [keyId]: 'ok' }))
+      toast.success(`Key works — ${data.models?.length ?? 0} model(s) available`)
+    } catch (e) {
+      setTestStatus(s => ({ ...s, [keyId]: 'error' }))
+      toast.error(`Key failed: ${(e as Error).message}`)
+    } finally {
+      setTestingId(null)
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -287,6 +305,19 @@ export default function AiKeysManager() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => void handleTestKey(k.id)}
+                    disabled={testingId === k.id}
+                    className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-xs transition-colors ${
+                      testingId === k.id ? 'text-gray-300' :
+                      testStatus[k.id] === 'ok' ? 'text-green-500 hover:text-green-600' :
+                      testStatus[k.id] === 'error' ? 'text-red-500 hover:text-red-600' :
+                      'text-gray-400 hover:text-indigo-600'
+                    }`}
+                    title="Test key"
+                  >
+                    {testingId === k.id ? '⏳' : testStatus[k.id] === 'ok' ? '✅' : testStatus[k.id] === 'error' ? '❌' : '⚡'}
+                  </button>
                   <button
                     onClick={() => setExpandedId(expandedId === k.id ? null : k.id)}
                     className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-xs"

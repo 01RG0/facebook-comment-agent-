@@ -80,14 +80,24 @@ async function fetchModels(
   }
 
   // openai / openai-compat / custom
-  const base = baseUrl ?? 'https://api.openai.com/v1'
+  const rawBase = (baseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '')
   if (baseUrl) validateExternalUrl(baseUrl)
   if (!apiKey) apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) throw new Error('No API key available')
-  const res = await fetch(`${base.replace(/\/$/, '')}/models`, {
+  // Build models URL: avoid double /v1 if caller already included it
+  const modelsUrl = rawBase.endsWith('/v1')
+    ? `${rawBase}/models`
+    : `${rawBase}/v1/models`
+  const res = await fetch(modelsUrl, {
     headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(15000),
   })
-  if (!res.ok) throw new Error(`Provider API error: ${res.status}`)
-  const data = await res.json() as { data?: { id: string }[] }
-  return (data.data ?? []).map(m => m.id).sort()
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '')
+    throw new Error(`Provider API error ${res.status}${errBody ? ': ' + errBody.slice(0, 200) : ''}`)
+  }
+  const data = await res.json() as { data?: { id: string }[]; models?: { id?: string; name?: string }[] }
+  if (data.data) return data.data.map(m => m.id).filter(Boolean).sort()
+  if (data.models) return data.models.map(m => m.id ?? m.name ?? '').filter(Boolean).sort()
+  return []
 }
