@@ -76,6 +76,13 @@ export function createCommentWorker() {
         return
       }
 
+      // ── 3b. Reply to own posts only ────────────────────────────────────────
+      if (cfg.reply_to_own_posts_only && !postId.startsWith(page.fb_page_id + '_')) {
+        log.info({ postId, fbPageId: page.fb_page_id }, 'Post not owned by this page, skipping')
+        await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'skipped', skipReason: 'not_own_post' })
+        return
+      }
+
       // ── 4. Human handoff keyword check ─────────────────────────────────────
       if (cfg.human_handoff_enabled && cfg.human_handoff_keywords && cfg.human_handoff_keywords.length > 0) {
         const text = message.toLowerCase()
@@ -151,8 +158,9 @@ export function createCommentWorker() {
         const jobAge = (Date.now() - job.timestamp) / 1000
         if (jobAge < cfg.reply_delay_seconds) {
           const waitMs = (cfg.reply_delay_seconds - jobAge) * 1000
-          log.info({ waitMs }, 'Reply delay — re-queuing with delay')
-          throw Object.assign(new Error('reply_delay'), { delayMs: waitMs })
+          log.info({ waitMs }, 'Reply delay — moving job to delayed queue')
+          await job.moveToDelayed(Date.now() + waitMs)
+          return
         }
       }
 

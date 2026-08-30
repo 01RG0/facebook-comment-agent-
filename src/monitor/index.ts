@@ -7,13 +7,13 @@ import { decrypt } from '@/lib/crypto'
 const log = pino({ level: 'info' })
 
 const RAILWAY_TOKEN = process.env.RAILWAY_TOKEN ?? ''
-const PROJECT_ID = process.env.RAILWAY_PROJECT_ID ?? '6e10bcc7-de16-4de2-b02d-b918cb6c6360'
-const APP_URL = process.env.WEB_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://web-production-ff15c.up.railway.app'
+const PROJECT_ID = process.env.RAILWAY_PROJECT_ID ?? ''
+const APP_URL = process.env.WEB_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? ''
 
 const SERVICE_IDS: Record<string, string> = {
-  web:    process.env.RAILWAY_WEB_SERVICE_ID    ?? '4bc5d6ae-8f0b-4571-93a5-ccf28a4fb368',
-  worker: process.env.RAILWAY_WORKER_SERVICE_ID ?? '74c3f068-192c-4546-8aa7-2bb24c1e642f',
-  redis:  process.env.RAILWAY_REDIS_SERVICE_ID  ?? 'adf1b3b1-f02a-427d-a9e7-0093389959ce',
+  web:    process.env.RAILWAY_WEB_SERVICE_ID    ?? '',
+  worker: process.env.RAILWAY_WORKER_SERVICE_ID ?? '',
+  redis:  process.env.RAILWAY_REDIS_SERVICE_ID  ?? '',
 }
 
 const db = createClient(
@@ -259,16 +259,16 @@ async function checkAiProviders() {
   try {
     const { data: keys } = await db
       .from('ai_provider_keys')
-      .select('id, provider, label, is_enabled, last_error, last_used_at, error_count')
-      .eq('is_enabled', true)
+      .select('id, provider, label, is_active, last_error_message, last_used_at, consecutive_errors')
+      .eq('is_active', true)
 
     if (!keys?.length) return
 
-    const nowBroken = keys.filter((k: { error_count: number; last_error: string | null }) => (k.error_count ?? 0) >= 3 && k.last_error)
+    const nowBroken = keys.filter((k: { consecutive_errors: number; last_error_message: string | null }) => (k.consecutive_errors ?? 0) >= 3 && k.last_error_message)
     if (nowBroken.length > 0) {
       const labels = nowBroken.map((k: { label: string; provider: string }) => `${k.label} (${k.provider})`).join(', ')
       await logEvent('ai_providers', 'warn', `${nowBroken.length} AI key(s) have repeated errors: ${labels}`, {
-        keys: nowBroken.map((k: { id: string; label: string; provider: string; last_error: string }) => ({ id: k.id, label: k.label, provider: k.provider, error: k.last_error })),
+        keys: nowBroken.map((k: { id: string; label: string; provider: string; last_error_message: string }) => ({ id: k.id, label: k.label, provider: k.provider, error: k.last_error_message })),
       })
     }
 
@@ -313,7 +313,7 @@ async function checkDlq() {
     const { count } = await db
       .from('dead_letter_comments')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'failed')
+      .is('resolved_at', null)
 
     if ((count ?? 0) > 20) {
       await logEvent('dlq', 'warn', `DLQ has ${count} unresolved failed comments`, { count })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/crypto'
+import { validateExternalUrl } from '@/lib/utils'
 
 export async function POST(
   req: NextRequest,
@@ -80,6 +81,7 @@ async function fetchModels(
 
   // openai / openai-compat / custom
   const base = baseUrl ?? 'https://api.openai.com/v1'
+  if (baseUrl) validateExternalUrl(baseUrl)
   if (!apiKey) apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) throw new Error('No API key available')
   const res = await fetch(`${base.replace(/\/$/, '')}/models`, {

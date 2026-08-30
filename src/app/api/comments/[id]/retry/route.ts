@@ -29,7 +29,7 @@ export async function POST(
 
   const queue = getCommentQueue()
   await queue.add(
-    'comment',
+    'reply-comment',
     {
       pageId: comment.page_id,
       fbPageId: page.fb_page_id,

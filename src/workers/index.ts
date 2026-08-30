@@ -10,6 +10,9 @@ const queue = getCommentQueue()
 import { scheduleTokenRefresh } from './token-refresh'
 scheduleTokenRefresh()
 
+// ── Health & queue monitor (runs on import via setInterval) ───────────────
+import '@/monitor/index'
+
 worker.on('completed', (job) => {
   logger.info({ jobId: job.id }, 'Comment job completed')
 })

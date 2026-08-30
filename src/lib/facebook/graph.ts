@@ -15,7 +15,8 @@ export interface MeResponse {
 
 export async function getMe(userToken: string): Promise<MeResponse> {
   const res = await fetch(
-    `${GRAPH_BASE}/me?fields=id,name,accounts{id,name,picture,access_token}&access_token=${userToken}`
+    `${GRAPH_BASE}/me?fields=id,name,accounts{id,name,picture,access_token}`,
+    { headers: { Authorization: `Bearer ${userToken}` } }
   )
   if (!res.ok) throw new Error(`Graph API /me failed: ${await res.text()}`)
   return res.json()
@@ -44,8 +45,8 @@ export async function unsubscribePageFromWebhook(
   pageToken: string
 ): Promise<void> {
   const res = await fetch(
-    `${GRAPH_BASE}/${fbPageId}/subscribed_apps?access_token=${pageToken}`,
-    { method: 'DELETE' }
+    `${GRAPH_BASE}/${fbPageId}/subscribed_apps`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${pageToken}` } }
   )
   if (!res.ok) throw new Error(`Webhook unsubscribe failed: ${await res.text()}`)
 }

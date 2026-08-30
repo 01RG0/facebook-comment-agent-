@@ -21,14 +21,15 @@ export async function GET(
 
   const { data: settings, error } = await supabase
     .from('settings')
-    .select('id, ai_provider, ai_model, custom_base_url, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, updated_at')
+    .select('id, ai_provider, ai_model, custom_base_url, ai_api_key_enc, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, updated_at')
     .eq('page_id', params.pageId)
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Never return encrypted API key — just signal whether it's set
-  return NextResponse.json({ ...settings, has_custom_api_key: false })
+  const { ai_api_key_enc, ...rest } = settings ?? {}
+  return NextResponse.json({ ...rest, has_custom_api_key: !!(ai_api_key_enc) })
 }
 
 export async function PATCH(

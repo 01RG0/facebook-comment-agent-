@@ -3,6 +3,7 @@ import { MistralProvider } from './providers/mistral'
 import { OpenAICompatProvider } from './providers/openai-compat'
 import type { AiConfig, AiProvider } from './types'
 import { decrypt } from '@/lib/crypto'
+import { validateExternalUrl } from '@/lib/utils'
 
 export function createAiProvider(
   config: AiConfig,
@@ -27,12 +28,14 @@ export function createAiProvider(
     case 'openai-compat': {
       const key = resolvedKey ?? process.env.OPENAI_API_KEY
       if (!key) throw new Error('OpenAI API key not configured')
+      if (config.baseUrl) validateExternalUrl(config.baseUrl)
       return new OpenAICompatProvider(key, config.model, config.provider, config.baseUrl)
     }
     default: {
       // Custom provider registered by admin — always openai-compat type
       const key = resolvedKey
       if (!key) throw new Error(`API key required for custom provider: ${config.provider}`)
+      if (config.baseUrl) validateExternalUrl(config.baseUrl)
       return new OpenAICompatProvider(key, config.model, config.provider, config.baseUrl)
     }
   }

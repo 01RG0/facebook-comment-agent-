@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/crypto'
+import { validateExternalUrl } from '@/lib/utils'
 
 type Params = { params: { keyId: string } }
 
@@ -43,6 +44,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       models = (data.data ?? []).map(m => m.id)
     } else {
       const baseUrl = key.base_url ?? 'https://api.openai.com'
+      if (key.base_url) validateExternalUrl(key.base_url)
       const res = await fetch(`${baseUrl}/v1/models`, {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(10000),
