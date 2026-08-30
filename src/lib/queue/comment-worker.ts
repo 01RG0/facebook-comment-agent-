@@ -1,7 +1,7 @@
 import { Worker, type Job } from 'bullmq'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createAiProvider } from '@/lib/ai/factory'
-import { sendPrivateReply } from '@/lib/facebook/graph'
+import { sendPrivateReply, sendPrivateImageReply } from '@/lib/facebook/graph'
 import { decrypt } from '@/lib/crypto'
 import { logger } from '@/lib/logger'
 import type { CommentJobPayload } from '@/types/meta'
@@ -176,6 +176,25 @@ export function createCommentWorker() {
         enhancedInstructions += ` Never use these words in your reply: ${blacklistWords.join(', ')}.`
       }
 
+      // ── 9b. Inject knowledge base assets into prompt ───────────────────────
+      const { data: pageAssets } = await db
+        .from('page_assets')
+        .select('id, label, description, tags, file_url, file_type')
+        .eq('page_id', pageId)
+        .order('created_at', { ascending: true })
+
+      const imageAssets = (pageAssets ?? []).filter(a => a.file_type === 'image')
+      if (imageAssets.length > 0) {
+        enhancedInstructions += '\n\n=== ATTACHABLE IMAGES ==='
+        enhancedInstructions += '\nYou may attach ONE image to your reply by ending your message with [SEND_IMAGE:asset_id]. Only include it when it is directly relevant to the student\'s question.\n'
+        for (const a of imageAssets) {
+          const tagStr = a.tags?.length ? ` | tags: ${(a.tags as string[]).join(', ')}` : ''
+          const desc = a.description ? `: ${a.description}` : ''
+          enhancedInstructions += `- ID: ${a.id} | "${a.label}"${tagStr}${desc}\n`
+        }
+        enhancedInstructions += '=== END IMAGES ==='
+      }
+
       // ── 10. Resolve AI keys with fallback chain ───────────────────────────
       const today = new Date().toISOString().split('T')[0]
       const thisMonth = new Date().toISOString().slice(0, 7)
@@ -311,6 +330,11 @@ export function createCommentWorker() {
         }
       }
 
+      // ── 10b. Strip image tag from AI reply (applies to both review and send) ─
+      const imageTagMatch = aiResult.text.match(/\[SEND_IMAGE:([a-f0-9-]{36})\]/)
+      const replyText = aiResult.text.replace(/\[SEND_IMAGE:[a-f0-9-]{36}\]/g, '').trim()
+      const imageAssetId = imageTagMatch?.[1] ?? null
+
       // ── 11. Review mode: save draft to handoff queue, skip sending ─────────
       if (cfg.review_mode_enabled) {
         log.info('Review mode enabled — saving draft to handoff queue')
@@ -322,16 +346,28 @@ export function createCommentWorker() {
           commenter_id: from.id,
           commenter_name: from.name,
           comment_text: message,
-          ai_draft: aiResult.text,
+          ai_draft: replyText,
           status: 'pending',
         }, { onConflict: 'fb_comment_id' })
         await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'skipped', skipReason: 'review_mode' })
         return
       }
 
-      // ── 12. Send private reply ─────────────────────────────────────────────
+      // ── 12. Send private reply (text + optional image attachment) ──────────
       const pageToken = decrypt(page.access_token_enc, page.access_token_iv)
-      await sendPrivateReply(commentId, aiResult.text, pageToken)
+      await sendPrivateReply(commentId, replyText, pageToken)
+
+      if (imageAssetId) {
+        const imageAsset = imageAssets.find(a => a.id === imageAssetId)
+        if (imageAsset?.file_url) {
+          try {
+            await sendPrivateImageReply(commentId, imageAsset.file_url, pageToken)
+            log.info({ assetId: imageAssetId }, 'Image attachment sent')
+          } catch (imgErr) {
+            log.warn({ assetId: imageAssetId, err: (imgErr as Error).message }, 'Image send failed — text reply already sent')
+          }
+        }
+      }
       log.info('Private reply sent')
 
       // ── 13. Increment rate-limit + usage buckets ───────────────────────────
@@ -347,7 +383,7 @@ export function createCommentWorker() {
       const { data: logRow } = await upsertLog(db, {
         commentId, pageId, userId: page.user_id, postId, from, message,
         status: 'replied',
-        replyText: aiResult.text,
+        replyText,
         aiProvider: resolvedProviderName,
         aiModel: resolvedModelName,
         repliedAt: new Date().toISOString(),

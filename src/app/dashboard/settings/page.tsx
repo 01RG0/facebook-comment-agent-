@@ -2,6 +2,7 @@ import { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import AiSettingsForm from '@/components/ai-settings-form'
 import TeamMembersPanel from '@/components/team-members-panel'
+import KnowledgeBasePanel from '@/components/knowledge-base-panel'
 
 export const metadata: Metadata = { title: 'Settings' }
 
@@ -70,6 +71,10 @@ export default async function SettingsPage({ searchParams }: Props) {
             } : null}
             handoffItems={handoffItems ?? []}
           />
+
+          {selectedPageId && (
+            <KnowledgeBasePanel pageId={selectedPageId} />
+          )}
 
           {selectedPageId && (
             <TeamMembersPanel pageId={selectedPageId} />

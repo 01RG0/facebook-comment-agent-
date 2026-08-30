@@ -65,6 +65,25 @@ export async function sendPrivateReply(
   return res.json()
 }
 
+export async function sendPrivateImageReply(
+  commentId: string,
+  imageUrl: string,
+  pageToken: string
+): Promise<{ id: string }> {
+  const res = await fetch(`${GRAPH_BASE}/${commentId}/private_replies`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        attachment: { type: 'image', payload: { url: imageUrl, is_reusable: true } },
+      },
+      access_token: pageToken,
+    }),
+  })
+  if (!res.ok) throw new Error(`Private image reply failed: ${await res.text()}`)
+  return res.json()
+}
+
 export async function refreshLongLivedToken(
   pageId: string,
   pageToken: string
