@@ -35,6 +35,7 @@ interface Settings {
   public_comment_on_approval?: boolean
   public_comment_reply_mode?: string | null
   public_comment_ai_instructions?: string | null
+  messaging_unavailable_reply?: string | null
 }
 
 interface HandoffItem {
@@ -186,6 +187,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
     public_comment_reply_enabled: initialSettings?.public_comment_reply_enabled ?? false,
     public_comment_reply_mode: initialSettings?.public_comment_reply_mode ?? 'static',
     public_comment_ai_instructions: initialSettings?.public_comment_ai_instructions ?? '',
+    messaging_unavailable_reply: initialSettings?.messaging_unavailable_reply ?? 'ابعتلنا مسدج ع رسائل الصفحة وهيتم الرد وتوضيح كل التفاصيل',
     public_comment_reply_text: initialSettings?.public_comment_reply_text ?? 'تم إرسال التفاصيل برايفت 📩',
     public_comment_on_approval: initialSettings?.public_comment_on_approval ?? true,
   })
@@ -296,6 +298,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
       public_comment_reply_enabled: form.public_comment_reply_enabled,
       public_comment_reply_mode: form.public_comment_reply_mode,
       public_comment_ai_instructions: form.public_comment_ai_instructions || null,
+      messaging_unavailable_reply: form.messaging_unavailable_reply,
       public_comment_reply_text: form.public_comment_reply_text,
       public_comment_on_approval: form.public_comment_on_approval,
     }
@@ -697,6 +700,22 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
                 />
               </div>
             )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                📵 Messaging Blocked — Public Fallback Reply
+              </label>
+              <input
+                type="text"
+                value={form.messaging_unavailable_reply}
+                onChange={e => setForm(f => ({ ...f, messaging_unavailable_reply: e.target.value }))}
+                dir="rtl"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Posted as a public comment when a user&apos;s privacy settings block private messages — instead of failing silently.
+              </p>
+            </div>
           </div>
 
           {/* Public Comment Reply */}

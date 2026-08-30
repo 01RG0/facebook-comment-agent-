@@ -33,7 +33,7 @@ export default async function SettingsPage({ searchParams }: Props) {
         reply_blacklist_words, review_mode_enabled, auto_retry_enabled,
         max_retry_attempts, human_handoff_enabled, human_handoff_keywords,
         public_comment_reply_enabled, public_comment_reply_text, public_comment_on_approval,
-        public_comment_reply_mode, public_comment_ai_instructions
+        public_comment_reply_mode, public_comment_ai_instructions, messaging_unavailable_reply
       `)
       .eq('page_id', selectedPageId)
       .single()

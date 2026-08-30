@@ -49,7 +49,7 @@ export function createCommentWorker() {
       const [settingsResult, limitsResult, bucketResult] = await Promise.all([
         db
           .from('settings')
-          .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_id, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text, public_comment_reply_mode, public_comment_ai_instructions')
+          .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_id, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text, public_comment_reply_mode, public_comment_ai_instructions, messaging_unavailable_reply')
           .eq('page_id', pageId)
           .maybeSingle(),
         db
@@ -374,7 +374,25 @@ export function createCommentWorker() {
 
       // ── 12. Send private reply (text + optional image attachment) ──────────
       const pageToken = decrypt(page.access_token_enc, page.access_token_iv)
-      await sendPrivateReply(commentId, replyText, pageToken)
+      try {
+        await sendPrivateReply(commentId, replyText, pageToken)
+      } catch (msgErr) {
+        const errText = (msgErr as Error).message.toLowerCase()
+        const isBlocked = errText.includes("can't receive") || errText.includes("cannot receive")
+          || errText.includes("opted out") || errText.includes("isn't available")
+          || errText.includes("privacy") || errText.includes('551') || errText.includes('2018278')
+        if (!isBlocked) throw msgErr
+        log.warn({ err: (msgErr as Error).message }, 'Private messaging blocked — posting public fallback')
+        const fallbackText = ((cfg as Record<string, unknown>).messaging_unavailable_reply as string | null)?.trim()
+          || 'ابعتلنا مسدج ع رسائل الصفحة وهيتم الرد وتوضيح كل التفاصيل'
+        try {
+          await postPublicCommentReply(commentId, fallbackText, pageToken)
+        } catch (pubFallbackErr) {
+          log.warn({ err: (pubFallbackErr as Error).message }, 'Public fallback also failed')
+        }
+        await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'skipped', skipReason: 'messaging_blocked' })
+        return
+      }
 
       if (imageAssetId) {
         const imageAsset = imageAssets.find(a => a.id === imageAssetId)
