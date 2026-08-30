@@ -3,7 +3,7 @@ import { verifyWebhookSignature } from '@/lib/facebook/signature'
 import { getCommentQueue } from '@/lib/queue/client'
 import { logger } from '@/lib/logger'
 import type { MetaWebhookBody } from '@/types/meta'
-import { createClient } from '@/lib/supabase/server'
+import { getAdminClient } from '@/lib/supabase/admin'
 
 // GET — webhook verification challenge
 export async function GET(req: NextRequest) {
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   }
 
   const queue = getCommentQueue()
-  const db = createClient()
+  const db = getAdminClient()
 
   for (const entry of body.entry ?? []) {
     const fbPageId = entry.id
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     for (const change of entry.changes ?? []) {
       const v = change.value
-      if (change.field !== 'feed') continue
+      if (change.field !== 'feed' && change.field !== 'video_feed') continue
       if (v.item !== 'comment') continue
       if (v.verb !== 'add') continue
       if (!v.comment_id || !v.message || !v.from) continue
