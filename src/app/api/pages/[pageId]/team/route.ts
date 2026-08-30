@@ -44,13 +44,13 @@ export async function POST(
 
   const { member_email, role } = await req.json()
   if (!member_email) return NextResponse.json({ error: 'member_email required' }, { status: 400 })
-  if (!['viewer', 'editor'].includes(role ?? 'viewer')) {
+  if (!['viewer', 'editor', 'reviewer'].includes(role ?? 'reviewer')) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
   }
 
   const { data, error } = await supabase
     .from('team_members')
-    .insert({ page_id: params.pageId, owner_id: user.id, member_email, role: role ?? 'viewer' })
+    .insert({ page_id: params.pageId, owner_id: user.id, member_email, role: role ?? 'reviewer' })
     .select('id, member_email, role, invited_at, accepted_at')
     .single()
 
