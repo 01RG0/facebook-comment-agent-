@@ -5,6 +5,7 @@ const FACEBOOK_TOKEN_URL = 'https://graph.facebook.com/v21.0/oauth/access_token'
 const PERMISSIONS = [
   'pages_show_list',
   'pages_manage_metadata',
+  'pages_read_engagement',
   'pages_messaging',
   'business_management',
 ].join(',')
