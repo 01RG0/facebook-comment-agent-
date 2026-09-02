@@ -86,6 +86,14 @@ export async function GET(req: NextRequest) {
             access_token_iv: iv,
           })
           .eq('id', existing.id)
+
+        // Re-subscribe with fresh token
+        try {
+          await subscribePageToWebhook(fbPage.id, fbPage.access_token)
+          await db.from('pages').update({ webhook_subscribed: true }).eq('id', existing.id)
+        } catch (webhookErr) {
+          logger.error({ err: (webhookErr as Error).message, fbPageId: fbPage.id }, 'Webhook re-subscribe failed on reconnect')
+        }
       } else {
         // Insert new page
         const { data: newPage, error: insertErr } = await db
