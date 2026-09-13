@@ -23,8 +23,8 @@ export function createCommentWorker() {
         .eq('fb_comment_id', commentId)
         .maybeSingle()
 
-      if (existing && existing.status !== 'pending') {
-        log.info('Comment already processed, skipping')
+      if (existing && (existing.status === 'replied' || existing.status === 'skipped')) {
+        log.info({ status: existing.status }, 'Comment already processed, skipping')
         return
       }
 
