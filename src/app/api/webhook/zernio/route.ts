@@ -10,6 +10,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  logger.info({ url: req.url }, 'Webhook POST received')
   // a. Read raw body (arrayBuffer -> Buffer)
   const rawBody = Buffer.from(await req.arrayBuffer())
   const signature = req.headers.get('x-zernio-signature')
