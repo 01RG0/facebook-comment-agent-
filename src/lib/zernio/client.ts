@@ -87,6 +87,54 @@ export async function sendZernioPublicReply(
   })
 }
 
+export async function sendZernioImageInConversation(
+  accountId: string,
+  participantFbUserId: string,
+  imageUrl: string
+): Promise<boolean> {
+  // After a private reply, find the conversation with that participant and send an image.
+  // Zernio's private-reply endpoint creates/opens a Messenger conversation but returns no conversationId.
+  // Strategy: list recent Facebook conversations for the account and match by participantId.
+  // Facebook Messenger participant IDs (PSIDs) differ from Graph API user IDs, so we match
+  // by scanning recent conversations — the one we just opened will be the most recent.
+  const params = new URLSearchParams({ accountId, platform: 'facebook', limit: '10', sortOrder: 'desc' })
+  let conversations: Array<{ id: string; participantId: string; updatedTime: string }> = []
+  try {
+    const res = await zernioFetch(`/inbox/conversations?${params}`)
+    const data = await res.json()
+    conversations = data.data ?? []
+  } catch {
+    return false
+  }
+
+  // The most recent conversation is likely the one we just opened.
+  // Cross-check: Zernio may expose the Facebook user ID as participantId or a PSID derived from it.
+  // We try exact match first, then fall back to the most-recent conversation (within 30s of now).
+  const THIRTY_SECONDS = 30_000
+  let convId: string | null = null
+  for (const c of conversations) {
+    if (c.participantId === participantFbUserId) { convId = c.id; break }
+  }
+  if (!convId && conversations.length > 0) {
+    const newest = conversations[0]
+    if (Date.now() - new Date(newest.updatedTime).getTime() < THIRTY_SECONDS) {
+      convId = newest.id
+    }
+  }
+
+  if (!convId) return false
+
+  try {
+    await zernioFetch(`/inbox/conversations/${convId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ accountId, attachmentUrl: imageUrl, attachmentType: 'image' }),
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function createZernioWebhook(
   webhookUrl: string,
   secret: string

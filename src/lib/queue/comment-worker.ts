@@ -1,7 +1,7 @@
 import { Worker, type Job } from 'bullmq'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createAiProvider } from '@/lib/ai/factory'
-import { sendZernioPrivateReply, sendZernioPublicReply } from '@/lib/zernio/client'
+import { sendZernioPrivateReply, sendZernioPublicReply, sendZernioImageInConversation } from '@/lib/zernio/client'
 import { logger } from '@/lib/logger'
 import type { CommentJobPayload } from '@/types/zernio'
 import { getRedisConnection } from './client'
@@ -393,7 +393,22 @@ export function createCommentWorker() {
       }
 
       if (imageAssetId) {
-        log.warn({ assetId: imageAssetId }, 'Image attachment skipped -- Zernio private-reply does not support image attachments')
+        // Zernio private-reply is text-only; try to find the opened Messenger conversation and
+        // send the image there. Best-effort — the match may fail if the PSID differs from
+        // the Facebook user ID in the comment author field.
+        const { data: asset } = await db
+          .from('page_assets')
+          .select('file_url')
+          .eq('id', imageAssetId)
+          .single()
+        if (asset?.file_url) {
+          const sent = await sendZernioImageInConversation(effectiveAccountId, from.id, asset.file_url)
+          if (sent) {
+            log.info({ assetId: imageAssetId }, 'Image sent via conversation fallback')
+          } else {
+            log.warn({ assetId: imageAssetId }, 'Image attachment skipped -- could not locate Messenger conversation')
+          }
+        }
       }
       // ── 12b. Post public comment reply ────────────────────────────────────
       const pubEnabled = (cfg as Record<string, unknown>).public_comment_reply_enabled as boolean | null
