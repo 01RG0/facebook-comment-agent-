@@ -56,25 +56,45 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any
 
-    // 5. Upsert page row: ON CONFLICT (user_id, zernio_account_id) DO UPDATE
-    const { data: page, error: upsertErr } = await db
+    // 5. Manual upsert — select existing, then update or insert
+    const { data: existing } = await db
       .from('pages')
-      .upsert(
-        {
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('zernio_account_id', accountId)
+      .maybeSingle()
+
+    let page: { id: string } | null = null
+
+    if (existing) {
+      const { data: updated, error: updateErr } = await db
+        .from('pages')
+        .update({ page_name: pageName, zernio_profile_id: zernioProfileId })
+        .eq('id', existing.id)
+        .select('id')
+        .single()
+      if (updateErr) {
+        logger.error({ err: updateErr.message, accountId }, 'Failed to update page row')
+        return NextResponse.redirect(`${appUrl}/dashboard?error=callback_failed`)
+      }
+      page = updated
+    } else {
+      const { data: inserted, error: insertErr } = await db
+        .from('pages')
+        .insert({
           user_id: user.id,
           page_name: pageName,
           fb_page_id: `zernio:${accountId}`,
           zernio_account_id: accountId,
           zernio_profile_id: zernioProfileId,
-        },
-        { onConflict: 'user_id, zernio_account_id' }
-      )
-      .select('id')
-      .single()
-
-    if (upsertErr || !page) {
-      logger.error({ err: upsertErr?.message, accountId }, 'Failed to upsert page row')
-      return NextResponse.redirect(`${appUrl}/dashboard?error=callback_failed`)
+        })
+        .select('id')
+        .single()
+      if (insertErr || !inserted) {
+        logger.error({ err: insertErr?.message, accountId }, 'Failed to insert page row')
+        return NextResponse.redirect(`${appUrl}/dashboard?error=callback_failed`)
+      }
+      page = inserted
     }
 
     // 6. Create default settings row for new pages (insert if not exists)
