@@ -59,11 +59,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'ignored' })
   }
 
-  // g. Skip if payload.comment.author.isOwnAccount === true
-  if (payload.comment?.author?.isOwnAccount === true) {
-    logger.info({ commentId: payload.comment?.id }, 'Webhook ignored: own account')
-    return NextResponse.json({ status: 'ignored' })
-  }
+  // g. isOwnAccount check removed — page owners may test by commenting on their own posts
 
   // h. Lookup page: db.from('pages').select('id, agent_enabled, fb_page_id').eq('zernio_account_id', payload.account.id).maybeSingle()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,6 +77,7 @@ export async function POST(req: NextRequest) {
 
   // i. Skip if !page || !page.agent_enabled
   if (!page || !page.agent_enabled) {
+    logger.info({ accountId: payload.account.id, pageFound: !!page, agentEnabled: page?.agent_enabled }, 'Webhook ignored: page not found or agent disabled')
     return NextResponse.json({ status: 'ignored' })
   }
 
