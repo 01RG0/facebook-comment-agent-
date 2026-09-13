@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getRedisConnection } from '@/lib/queue/client'
 import { logger } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
-  const connected = searchParams.get('connected')
   const accountId = searchParams.get('accountId')
   const username = searchParams.get('username')
-  const state = searchParams.get('state')
   const error = searchParams.get('error')
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin
+
+  // Log all params Zernio sends back for debugging
+  logger.info(
+    { params: Object.fromEntries(searchParams.entries()) },
+    'Zernio OAuth callback received'
+  )
 
   // 1. Error check
   if (error) {
@@ -19,26 +22,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${appUrl}/dashboard?error=facebook_denied`)
   }
 
-  // 2. CSRF check via Redis
-  if (!state) {
-    logger.warn('Facebook OAuth missing state param')
+  // 2. CSRF check via cookie
+  const oauthCookie = req.cookies.get('_oauth_state')?.value
+  if (!oauthCookie) {
+    logger.warn('Facebook OAuth missing _oauth_state cookie — possible CSRF or expired session')
     return NextResponse.redirect(`${appUrl}/dashboard?error=invalid_state`)
   }
 
-  const redis = getRedisConnection()
-  const savedUserId = await redis.get(`fb:oauth:state:${state}`)
-
-  if (!savedUserId) {
-    logger.warn('Facebook OAuth state not found in Redis — expired or invalid')
+  const [, cookieUserId] = oauthCookie.split(':')
+  if (!cookieUserId) {
+    logger.warn('Facebook OAuth _oauth_state cookie malformed')
     return NextResponse.redirect(`${appUrl}/dashboard?error=invalid_state`)
   }
 
-  await redis.del(`fb:oauth:state:${state}`)
-
-  // 3. Verify session user
+  // 3. Verify session user matches cookie
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.id !== savedUserId) {
+  if (!user || user.id !== cookieUserId) {
+    logger.warn({ cookieUserId, sessionUserId: user?.id }, 'OAuth user mismatch or no session')
     return NextResponse.redirect(`${appUrl}/auth/login`)
   }
 
@@ -94,7 +95,9 @@ export async function GET(req: NextRequest) {
     }
 
     logger.info({ userId: user.id, accountId, pageId: page.id }, 'Facebook page connected via Zernio')
-    return NextResponse.redirect(`${appUrl}/dashboard?success=connected`)
+    const successRes = NextResponse.redirect(`${appUrl}/dashboard?success=connected`)
+    successRes.cookies.delete('_oauth_state')
+    return successRes
   } catch (err) {
     logger.error({ err: (err as Error).message }, 'Zernio Facebook callback error')
     return NextResponse.redirect(`${appUrl}/dashboard?error=callback_failed`)

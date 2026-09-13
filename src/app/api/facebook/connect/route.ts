@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getConnectUrl } from '@/lib/zernio/client'
-import { getRedisConnection } from '@/lib/queue/client'
+import { logger } from '@/lib/logger'
 import crypto from 'crypto'
 
 export async function GET(req: NextRequest) {
@@ -15,21 +15,27 @@ export async function GET(req: NextRequest) {
   }
 
   const state = crypto.randomBytes(16).toString('hex')
-  const redis = getRedisConnection()
-  await redis.setex(`fb:oauth:state:${state}`, 600, user.id)
-
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin
-  const callbackUrl = `${appUrl}/api/facebook/callback?state=${encodeURIComponent(state)}`
+  // Pass only the base callback URL — Zernio will append its own params
+  const callbackUrl = `${appUrl}/api/facebook/callback`
 
   let authUrl: string
   try {
     const result = await getConnectUrl(profileId, callbackUrl)
     authUrl = result.authUrl
   } catch (err) {
-    const logger = (await import('@/lib/logger')).logger
     logger.error({ err: (err as Error).message }, 'Failed to get Zernio connect URL')
     return NextResponse.redirect(`${appUrl}/dashboard?error=connect_failed`)
   }
 
-  return NextResponse.redirect(authUrl)
+  // Store state+userId in a cookie — more reliable than Redis across OAuth redirects
+  const res = NextResponse.redirect(authUrl)
+  res.cookies.set('_oauth_state', `${state}:${user.id}`, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    maxAge: 600,
+    path: '/',
+  })
+  return res
 }
