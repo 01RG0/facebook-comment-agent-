@@ -1,0 +1,288 @@
+You are working on a Next.js 14 (App Router) TypeScript project at the current directory.
+The project is a Facebook comment-reply SaaS. The ACTIVE BRANCH is migrate/zernio-api.
+
+MISSION: Replace the current Meta Graph API Facebook integration with the Zernio API
+(https://zernio.com/api/v1). Zernio manages Facebook OAuth tokens so we no longer store
+page access tokens ourselves.
+
+== CURRENT STATE ==
+
+Files that call Meta Graph API directly:
+- src/lib/facebook/graph.ts            (ALL Graph API calls -- will become dead code)
+- src/lib/facebook/oauth.ts            (Facebook OAuth -- replaced by Zernio connect)
+- src/lib/facebook/signature.ts        (Meta HMAC verify -- replaced by Zernio HMAC)
+- src/app/api/facebook/connect/route.ts
+- src/app/api/facebook/callback/route.ts
+- src/app/api/facebook/disconnect/route.ts
+- src/app/api/webhook/meta/route.ts
+- src/app/api/pages/[pageId]/toggle/route.ts   (calls subscribePageToWebhook on re-enable)
+- src/app/api/handoff/[id]/reply/route.ts      (calls sendPrivateReply + postPublicCommentReply)
+- src/lib/queue/comment-worker.ts              (calls sendPrivateReply, sendPrivateImageReply, postPublicCommentReply)
+- src/workers/index.ts                 (imports scheduleTokenRefresh -- no longer needed)
+- src/workers/token-refresh.ts         (entire file deprecated -- Zernio manages tokens)
+- src/types/meta.ts                    (Meta webhook types -- replaced by Zernio types)
+
+DB schema (migration 019 already applied to add columns):
+  pages table now has:
+    zernio_account_id TEXT   -- Zernio SocialAccount ID (replaces access_token_enc/iv)
+    zernio_profile_id TEXT   -- Zernio Profile ID
+  Old columns access_token_enc, access_token_iv are kept (soft migration) but no longer used.
+
+== ZERNIO API -- KEY ENDPOINTS ==
+
+Base URL: https://zernio.com/api/v1
+Auth: Authorization: Bearer {ZERNIO_API_KEY}
+
+### 1. Facebook Connect (OAuth)
+GET /v1/connect/facebook
+  Query params: profileId (required), redirect_url (your callback URL)
+  Returns JSON: { authUrl: 'https://...' }   <- redirect user here
+
+After Facebook auth, Zernio redirects to your redirect_url with:
+  ?connected=facebook&profileId=X&accountId=Y&username=Z
+
+### 2. Disconnect an account
+DELETE /v1/accounts/{accountId}
+  Auth: Bearer
+  Response: { success: true }
+
+### 3. Register Zernio webhook
+POST /v1/webhooks/settings
+  Body: {
+    name: string,
+    url: string,
+    secret: string,
+    events: ['comment.received'],
+    isActive: true
+  }
+  Response: { success: true, webhook: { _id: string } }
+
+### 4. Webhook event payload (comment.received)
+Headers:
+  X-Zernio-Signature = lowercase hex HMAC-SHA256 of raw body keyed by ZERNIO_WEBHOOK_SECRET
+  X-Zernio-Event = 'comment.received'
+  X-Zernio-Event-Id = stable event UUID
+
+Payload shape:
+{
+  id: string,
+  event: 'comment.received',
+  timestamp: string,
+  comment: {
+    id: string,
+    platformPostId: string,
+    platform: 'facebook' | 'instagram' | ...,
+    text: string,
+    isReply: boolean,
+    parentCommentId: string | null,
+    author: {
+      id: string,
+      name?: string,
+      username?: string,
+      isOwnAccount?: boolean
+    },
+    createdAt: string
+  },
+  post: { platformPostId: string },
+  account: {
+    id: string,
+    platform: string,
+    username: string
+  }
+}
+
+### 5. Send private DM reply to commenter
+POST /v1/inbox/comments/{platformPostId}/{commentId}/private-reply
+  Body: {
+    accountId: string,   <- pages.zernio_account_id
+    message: string
+  }
+  Response: { status: 'success', messageId: string }
+  Error 400 with details.privateReplyConsumed = true means already replied -- do not retry
+
+### 6. Post public comment reply
+POST /v1/inbox/comments/{postId}
+  Body: {
+    accountId: string,
+    message: string,
+    commentId: string
+  }
+  Response: { success: true, data: { commentId: string } }
+
+== TASKS ==
+
+Please run sub-tasks in parallel where there are no dependencies.
+
+=== TASK A: New Zernio client + types ===
+
+1. Create src/lib/zernio/client.ts
+   - ZERNIO_BASE = 'https://zernio.com/api/v1'
+   - async zernioFetch(path, init?): calls fetch with Authorization: Bearer from ZERNIO_API_KEY, throws on non-2xx
+   - export async function getConnectUrl(profileId: string, redirectUrl: string): Promise<{authUrl: string}>
+     GET /v1/connect/facebook?profileId=X&redirect_url=Y
+   - export async function disconnectAccount(accountId: string): Promise<void>
+     DELETE /v1/accounts/{accountId}
+   - export async function sendZernioPrivateReply(platformPostId: string, commentId: string, accountId: string, message: string): Promise<{messageId: string}>
+     POST /v1/inbox/comments/{platformPostId}/{commentId}/private-reply
+   - export async function sendZernioPublicReply(platformPostId: string, commentId: string, accountId: string, message: string): Promise<void>
+     POST /v1/inbox/comments/{platformPostId}  body: {accountId, message, commentId}
+   - export async function createZernioWebhook(webhookUrl: string, secret: string): Promise<{id: string}>
+     POST /v1/webhooks/settings  body: {name:'comment-agent', url:webhookUrl, secret, events:['comment.received'], isActive:true}
+   Use logger from src/lib/logger.ts. Use process.env.ZERNIO_API_KEY.
+
+2. Create src/lib/zernio/signature.ts
+   - export function verifyZernioSignature(rawBody: Buffer, signatureHeader: string | null): boolean
+   - HMAC-SHA256 of rawBody using process.env.ZERNIO_WEBHOOK_SECRET
+   - Use crypto.timingSafeEqual to compare (same pattern as existing src/lib/facebook/signature.ts)
+
+3. Create src/types/zernio.ts
+   - export interface ZernioCommentPayload with the full comment.received shape above
+   - export interface CommentJobPayload:
+     { pageId: string; fbPageId: string; zernioAccountId: string; commentId: string; platformPostId: string; postId: string; from: {id: string; name: string}; message: string; createdTime: number }
+
+=== TASK B: Facebook OAuth routes ===
+
+4. Rewrite src/app/api/facebook/connect/route.ts
+   - Auth check (same as current)
+   - Generate random state, store state->userId in Redis (key: fb:oauth:state:{state}, expire 600s)
+   - Call getConnectUrl(process.env.ZERNIO_PROFILE_ID!, callbackUrl + '?state=' + state)
+   - Redirect to authUrl
+
+5. Rewrite src/app/api/facebook/callback/route.ts
+   New standard-mode callback:
+   a. Read: connected, accountId, username, state, error from searchParams
+   b. If error -> redirect /dashboard?error=facebook_denied
+   c. Verify state from Redis (same CSRF pattern as current code)
+   d. Verify session user
+   e. If !accountId -> redirect with error
+   f. Upsert page row: ON CONFLICT (user_id, zernio_account_id) DO UPDATE
+      Fields: user_id, page_name=username, fb_page_id='zernio:'+accountId, zernio_account_id=accountId, zernio_profile_id=ZERNIO_PROFILE_ID
+   g. Create default settings row for new pages (insert if not exists)
+   h. Redirect /dashboard?success=connected
+
+6. Rewrite src/app/api/facebook/disconnect/route.ts
+   - Auth check
+   - Read pageId from body
+   - Fetch page row (must belong to user)
+   - Call disconnectAccount(page.zernio_account_id) -- best-effort, log warning if fails
+   - Delete page row
+   - Return {success: true}
+
+=== TASK C: Zernio webhook endpoint ===
+
+7. Create src/app/api/webhook/zernio/route.ts
+   POST handler:
+   a. Read raw body (arrayBuffer -> Buffer)
+   b. Verify X-Zernio-Signature using verifyZernioSignature -> 401 on fail
+   c. Parse as ZernioCommentPayload
+   d. Only process X-Zernio-Event === 'comment.received'
+   e. Skip if payload.comment.platform !== 'facebook'
+   f. Skip if payload.comment.isReply === true
+   g. Skip if payload.comment.author.isOwnAccount === true
+   h. Lookup page: db.from('pages').select('id, agent_enabled, fb_page_id').eq('zernio_account_id', payload.account.id).maybeSingle()
+   i. Skip if !page || !page.agent_enabled
+   j. If page.fb_page_id is null or starts with 'zernio:':
+      Extract real fb_page_id from payload.comment.platformPostId.split('_')[0]
+      Update db: pages.fb_page_id = extracted value
+   k. Enqueue to BullMQ queue 'comment-replies' with jobId = payload.comment.id:
+      {
+        pageId: page.id,
+        fbPageId: page.fb_page_id,
+        zernioAccountId: payload.account.id,
+        commentId: payload.comment.id,
+        platformPostId: payload.comment.platformPostId,
+        postId: payload.comment.platformPostId,
+        from: { id: payload.comment.author.id, name: payload.comment.author.name ?? payload.comment.author.username ?? '' },
+        message: payload.comment.text,
+        createdTime: new Date(payload.comment.createdAt).getTime() / 1000
+      }
+   l. Return {status: 'ok'}
+
+   GET handler: return 200 text 'ok'
+
+=== TASK D: Comment worker update ===
+
+8. Update src/lib/queue/comment-worker.ts (MINIMAL changes, only these):
+
+   a. Add import: import { sendZernioPrivateReply, sendZernioPublicReply } from '@/lib/zernio/client'
+   b. Remove import of sendPrivateReply, sendPrivateImageReply, postPublicCommentReply from '@/lib/facebook/graph'
+   c. At top of worker function, add zernioAccountId and platformPostId to destructuring:
+      const { pageId, fbPageId, zernioAccountId, commentId, platformPostId, postId, from, message, createdTime } = job.data
+   d. In step 2 page .select(), change 'access_token_enc, access_token_iv' to 'zernio_account_id'
+   e. In step 3b (reply_to_own_posts_only), guard:
+      if (cfg.reply_to_own_posts_only && page.fb_page_id && !page.fb_page_id.startsWith('zernio:') && !postId.startsWith(page.fb_page_id + '_'))
+   f. Before step 12 (Send private reply), REMOVE:
+      const pageToken = decrypt(page.access_token_enc, page.access_token_iv)
+      Add instead:
+      const effectiveAccountId = zernioAccountId ?? page.zernio_account_id ?? ''
+      const effectivePostId = platformPostId ?? postId
+   g. Step 12 private reply:
+      Replace: await sendPrivateReply(commentId, replyText, pageToken)
+      With:    await sendZernioPrivateReply(effectivePostId, commentId, effectiveAccountId, replyText)
+   h. Messaging blocked error detection (comment near 'isBlocked'):
+      Replace the long errText.includes chain with:
+      const isBlocked = errText.includes('privateReplyConsumed') || errText.includes('2018278') || errText.includes('551') || errText.includes('messaging') || errText.includes('privacy') || errText.includes('opted out') || errText.includes('blocked')
+   i. Fallback postPublicCommentReply:
+      Replace: await postPublicCommentReply(commentId, fallbackText, pageToken)
+      With:    await zernioSendPublicReply(effectivePostId, commentId, effectiveAccountId, fallbackText)
+      (or use the correct function name from the import)
+   j. Image reply block: replace the imageAsset send logic with just:
+      if (imageAssetId) { log.warn({ assetId: imageAssetId }, 'Image attachment skipped -- Zernio private-reply does not support image attachments') }
+   k. Step 12b (public comment reply):
+      Replace: await postPublicCommentReply(commentId, publicReplyText, pageToken)
+      With:    await zernioSendPublicReply(effectivePostId, commentId, effectiveAccountId, publicReplyText)
+   l. Remove decrypt import if it is no longer used in this file (check carefully)
+
+=== TASK E: Cleanup ===
+
+9. Update src/app/api/pages/[pageId]/toggle/route.ts
+   Remove the subscribePageToWebhook call and the decrypt import and the try/catch block around it.
+   Keep auth check, update agent_enabled in DB, return result.
+
+10. Update src/app/api/handoff/[id]/reply/route.ts
+    Replace sendPrivateReply/postPublicCommentReply:
+    - Add import: import { sendZernioPrivateReply, sendZernioPublicReply } from '@/lib/zernio/client'
+    - Remove import of sendPrivateReply, postPublicCommentReply from '@/lib/facebook/graph'
+    - Remove import of decrypt
+    - Change page select to: .select('zernio_account_id, fb_page_id')
+    - Get platformPostId by querying comments_log:
+        const { data: logRow } = await db.from('comments_log').select('fb_post_id').eq('fb_comment_id', item.fb_comment_id).maybeSingle()
+        const platformPostId = logRow?.fb_post_id ?? ''
+    - Replace: const pageToken = decrypt(...); await sendPrivateReply(item.fb_comment_id, reply_text, pageToken)
+      With:    await sendZernioPrivateReply(platformPostId, item.fb_comment_id, page.zernio_account_id ?? '', reply_text)
+    - Replace public comment reply:
+        await zernioSendPublicReply(platformPostId, item.fb_comment_id, page.zernio_account_id ?? '', settings.public_comment_reply_text)
+
+11. Update src/workers/index.ts
+    Remove: import { scheduleTokenRefresh } from './token-refresh'
+    Remove: scheduleTokenRefresh() call
+    Add comment: // Token refresh removed -- Zernio manages OAuth tokens
+
+12. Add deprecation comment to src/workers/token-refresh.ts:
+    // DEPRECATED: This file is no longer used. Zernio manages Facebook OAuth token refresh.
+    // Kept for rollback reference only. Delete after Zernio migration is confirmed stable.
+
+13. Update .env.example -- add these new vars before the existing ones:
+    ZERNIO_API_KEY=                    # From zernio.com/dashboard/api-keys
+    ZERNIO_WEBHOOK_SECRET=             # Random string -- set same value in Zernio webhook config
+    ZERNIO_PROFILE_ID=                 # From GET https://zernio.com/api/v1/profiles
+
+    Comment out (keep for reference):
+    # DEPRECATED -- replaced by Zernio:
+    # META_APP_ID=
+    # META_APP_SECRET=
+    # META_VERIFY_TOKEN=
+    # NEXT_PUBLIC_FACEBOOK_APP_ID=
+
+14. Create src/lib/zernio/register-webhook.ts
+    A standalone script (never imported by app code) that registers our webhook with Zernio.
+    Usage: npx ts-node src/lib/zernio/register-webhook.ts
+    It calls createZernioWebhook(process.env.NEXT_PUBLIC_APP_URL + '/api/webhook/zernio', process.env.ZERNIO_WEBHOOK_SECRET)
+    then logs the subscription ID.
+
+== ACCEPTANCE CRITERIA ==
+- TypeScript compiles: npx tsc --noEmit passes
+- No remaining imports of sendPrivateReply/postPublicCommentReply/sendPrivateImageReply from facebook/graph in non-graph files
+- New webhook endpoint at /api/webhook/zernio exists
+- Comment worker uses Zernio API functions
+- .env.example has ZERNIO_* vars
