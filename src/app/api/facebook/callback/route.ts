@@ -87,6 +87,9 @@ export async function GET(req: NextRequest) {
           fb_page_id: `zernio:${accountId}`,
           zernio_account_id: accountId,
           zernio_profile_id: zernioProfileId,
+          // Deprecated columns kept for schema compat — Zernio manages tokens now
+          access_token_enc: 'zernio',
+          access_token_iv: 'zernio',
         })
         .select('id')
         .single()
