@@ -1,3 +1,6 @@
+// DEPRECATED: This file is no longer used. Zernio manages Facebook OAuth token refresh.
+// Kept for rollback reference only. Delete after Zernio migration is confirmed stable.
+
 import { Queue, Worker } from 'bullmq'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getRedisConnection } from '@/lib/queue/client'

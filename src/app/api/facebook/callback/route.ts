@@ -1,26 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { exchangeCodeForToken, getLongLivedToken } from '@/lib/facebook/oauth'
-import { getMe, subscribePageToWebhook } from '@/lib/facebook/graph'
-import { encrypt } from '@/lib/crypto'
 import { getRedisConnection } from '@/lib/queue/client'
 import { logger } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
-  const code = searchParams.get('code')
+  const connected = searchParams.get('connected')
+  const accountId = searchParams.get('accountId')
+  const username = searchParams.get('username')
   const state = searchParams.get('state')
   const error = searchParams.get('error')
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL!
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin
 
-  // User denied permission
+  // 1. Error check
   if (error) {
-    logger.warn({ error }, 'Facebook OAuth denied by user')
+    logger.warn({ error }, 'Facebook OAuth denied or returned error')
     return NextResponse.redirect(`${appUrl}/dashboard?error=facebook_denied`)
   }
 
-  // ── CSRF check via Redis ────────────────────────────────────────────────────
+  // 2. CSRF check via Redis
   if (!state) {
     logger.warn('Facebook OAuth missing state param')
     return NextResponse.redirect(`${appUrl}/dashboard?error=invalid_state`)
@@ -36,107 +35,68 @@ export async function GET(req: NextRequest) {
 
   await redis.del(`fb:oauth:state:${state}`)
 
-  if (!code) {
-    return NextResponse.redirect(`${appUrl}/dashboard?error=no_code`)
-  }
-
-  // ── Auth check ─────────────────────────────────────────────────────────────
+  // 3. Verify session user
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.redirect(`${appUrl}/auth/login`)
+  if (!user || user.id !== savedUserId) {
+    return NextResponse.redirect(`${appUrl}/auth/login`)
+  }
+
+  // 4. Validate accountId
+  if (!accountId) {
+    logger.warn('Facebook OAuth callback missing accountId')
+    return NextResponse.redirect(`${appUrl}/dashboard?error=no_account_id`)
+  }
+
+  const zernioProfileId = process.env.ZERNIO_PROFILE_ID ?? null
+  const pageName = username || 'Facebook Page'
 
   try {
-    // ── Exchange code for short-lived token ───────────────────────────────
-    const shortToken = await exchangeCodeForToken(code)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any
 
-    // ── Exchange for long-lived (60-day) token ────────────────────────────
-    const longToken = await getLongLivedToken(shortToken.access_token)
+    // 5. Upsert page row: ON CONFLICT (user_id, zernio_account_id) DO UPDATE
+    const { data: page, error: upsertErr } = await db
+      .from('pages')
+      .upsert(
+        {
+          user_id: user.id,
+          page_name: pageName,
+          fb_page_id: `zernio:${accountId}`,
+          zernio_account_id: accountId,
+          zernio_profile_id: zernioProfileId,
+        },
+        { onConflict: 'user_id, zernio_account_id' }
+      )
+      .select('id')
+      .single()
 
-    // ── Fetch pages the user manages ─────────────────────────────────────
-    const me = await getMe(longToken.access_token)
-    const fbPages = me.accounts?.data ?? []
-
-    if (fbPages.length === 0) {
-      return NextResponse.redirect(`${appUrl}/dashboard?error=no_pages`)
+    if (upsertErr || !page) {
+      logger.error({ err: upsertErr?.message, accountId }, 'Failed to upsert page row')
+      return NextResponse.redirect(`${appUrl}/dashboard?error=callback_failed`)
     }
 
-    // ── Store each page ───────────────────────────────────────────────────
-    for (const fbPage of fbPages) {
-      const { enc, iv } = encrypt(fbPage.access_token)
+    // 6. Create default settings row for new pages (insert if not exists)
+    const { data: existingSettings } = await db
+      .from('settings')
+      .select('id')
+      .eq('page_id', page.id)
+      .maybeSingle()
 
-      // biome-ignore lint: supabase type inference workaround
-      // eslint-disable-next-line
-      const db = supabase as any
-      const existingResult = await db
-        .from('pages')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('fb_page_id', fbPage.id)
-        .maybeSingle()
-      const existing = existingResult.data as { id: string } | null
-
-      if (existing) {
-        // Update token if page already connected
-        await db
-          .from('pages')
-          .update({
-            page_name: fbPage.name,
-            page_picture_url: fbPage.picture?.data?.url ?? null,
-            access_token_enc: enc,
-            access_token_iv: iv,
-          })
-          .eq('id', existing.id)
-
-        // Re-subscribe with fresh token
-        try {
-          await subscribePageToWebhook(fbPage.id, fbPage.access_token)
-          await db.from('pages').update({ webhook_subscribed: true }).eq('id', existing.id)
-        } catch (webhookErr) {
-          logger.error({ err: (webhookErr as Error).message, fbPageId: fbPage.id }, 'Webhook re-subscribe failed on reconnect')
-        }
-      } else {
-        // Insert new page
-        const { data: newPage, error: insertErr } = await db
-          .from('pages')
-          .insert({
-            user_id: user.id,
-            fb_page_id: fbPage.id,
-            page_name: fbPage.name,
-            page_picture_url: fbPage.picture?.data?.url ?? null,
-            access_token_enc: enc,
-            access_token_iv: iv,
-          })
-          .select('id')
-          .single()
-
-        if (insertErr || !newPage) {
-          logger.error({ err: insertErr?.message, fbPageId: fbPage.id }, 'Failed to insert page')
-          continue
-        }
-
-        // Create default settings for new page
-        await db.from('settings').insert({
-          page_id: newPage.id,
-          user_id: user.id,
-        })
-
-        // Subscribe to webhook
-        try {
-          await subscribePageToWebhook(fbPage.id, fbPage.access_token)
-          await db
-            .from('pages')
-            .update({ webhook_subscribed: true })
-            .eq('id', newPage.id)
-        } catch (webhookErr) {
-          logger.error({ err: (webhookErr as Error).message, fbPageId: fbPage.id }, 'Webhook subscribe failed')
-        }
+    if (!existingSettings) {
+      const { error: settingsErr } = await db.from('settings').insert({
+        page_id: page.id,
+        user_id: user.id,
+      })
+      if (settingsErr) {
+        logger.warn({ err: settingsErr.message, pageId: page.id }, 'Failed to create default settings')
       }
     }
 
-    logger.info({ userId: user.id, pageCount: fbPages.length }, 'Facebook pages connected')
+    logger.info({ userId: user.id, accountId, pageId: page.id }, 'Facebook page connected via Zernio')
     return NextResponse.redirect(`${appUrl}/dashboard?success=connected`)
   } catch (err) {
-    logger.error({ err: (err as Error).message }, 'Facebook callback error')
+    logger.error({ err: (err as Error).message }, 'Zernio Facebook callback error')
     return NextResponse.redirect(`${appUrl}/dashboard?error=callback_failed`)
   }
 }

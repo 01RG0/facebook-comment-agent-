@@ -1,6 +1,6 @@
 import { Queue } from 'bullmq'
 import IORedis from 'ioredis'
-import type { CommentJobPayload } from '@/types/meta'
+import type { CommentJobPayload } from '@/types/zernio'
 
 let _connection: IORedis | null = null
 
