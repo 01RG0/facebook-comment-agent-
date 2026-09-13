@@ -40,22 +40,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
+  logger.info({ event: payload.event, platform: payload.comment?.platform, isReply: payload.comment?.isReply, isOwnAccount: payload.comment?.author?.isOwnAccount, accountId: (payload as Record<string,unknown> & { account?: { id: string } }).account?.id }, 'Webhook payload parsed')
+
   if (payload.event !== 'comment.received') {
+    logger.info({ event: payload.event }, 'Webhook ignored: event mismatch')
     return NextResponse.json({ status: 'ignored' })
   }
 
   // e. Skip if payload.comment.platform !== 'facebook'
   if (payload.comment?.platform !== 'facebook') {
+    logger.info({ platform: payload.comment?.platform }, 'Webhook ignored: not facebook')
     return NextResponse.json({ status: 'ignored' })
   }
 
   // f. Skip if payload.comment.isReply === true
   if (payload.comment?.isReply === true) {
+    logger.info({ commentId: payload.comment?.id }, 'Webhook ignored: is reply')
     return NextResponse.json({ status: 'ignored' })
   }
 
   // g. Skip if payload.comment.author.isOwnAccount === true
   if (payload.comment?.author?.isOwnAccount === true) {
+    logger.info({ commentId: payload.comment?.id }, 'Webhook ignored: own account')
     return NextResponse.json({ status: 'ignored' })
   }
 
