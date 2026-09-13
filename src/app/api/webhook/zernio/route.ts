@@ -92,26 +92,32 @@ export async function POST(req: NextRequest) {
 
   // k. Enqueue to BullMQ queue 'comment-replies' with jobId = payload.comment.id:
   const queue = getCommentQueue()
-  await queue.add(
-    'process-comment',
-    {
-      pageId: page.id,
-      fbPageId,
-      zernioAccountId: payload.account.id,
-      commentId: payload.comment.id,
-      platformPostId: payload.comment.platformPostId,
-      postId: payload.comment.platformPostId,
-      from: {
-        id: payload.comment.author.id,
-        name: payload.comment.author.name ?? payload.comment.author.username ?? '',
+  try {
+    const job = await queue.add(
+      'process-comment',
+      {
+        pageId: page.id,
+        fbPageId,
+        zernioAccountId: payload.account.id,
+        commentId: payload.comment.id,
+        platformPostId: payload.comment.platformPostId,
+        postId: payload.comment.platformPostId,
+        from: {
+          id: payload.comment.author.id,
+          name: payload.comment.author.name ?? payload.comment.author.username ?? '',
+        },
+        message: payload.comment.text,
+        createdTime: new Date(payload.comment.createdAt).getTime() / 1000,
       },
-      message: payload.comment.text,
-      createdTime: new Date(payload.comment.createdAt).getTime() / 1000,
-    },
-    {
-      jobId: payload.comment.id,
-    }
-  )
+      {
+        jobId: payload.comment.id,
+      }
+    )
+    logger.info({ jobId: job.id, commentId: payload.comment.id, pageId: page.id }, 'Comment job enqueued')
+  } catch (queueErr) {
+    logger.error({ err: (queueErr as Error).message, commentId: payload.comment.id }, 'Failed to enqueue comment job')
+    return NextResponse.json({ error: 'Queue error' }, { status: 500 })
+  }
 
   // l. Return {status: 'ok'}
   return NextResponse.json({ status: 'ok' })

@@ -13,6 +13,7 @@ export function createCommentWorker() {
     async (job: Job<CommentJobPayload>) => {
       const { pageId, fbPageId, zernioAccountId, commentId, platformPostId, postId, from, message, createdTime } = job.data
       const log = logger.child({ jobId: job.id, commentId, pageId })
+      log.info('Comment job picked up by worker')
       const db = getAdminClient()
 
       // ── 1. Check idempotency (DB-level dedup) ──────────────────────────────
