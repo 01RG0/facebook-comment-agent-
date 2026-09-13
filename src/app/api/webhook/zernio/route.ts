@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  logger.info({ event: payload.event, platform: payload.comment?.platform, isReply: payload.comment?.isReply, isOwnAccount: payload.comment?.author?.isOwnAccount, accountId: (payload as Record<string,unknown> & { account?: { id: string } }).account?.id }, 'Webhook payload parsed')
+  logger.info({ event: payload.event, platform: payload.comment?.platform, isReply: payload.comment?.isReply, isOwnAccount: payload.comment?.author?.isOwnAccount, accountId: payload.account?.id }, 'Webhook payload parsed')
 
   if (payload.event !== 'comment.received') {
     logger.info({ event: payload.event }, 'Webhook ignored: event mismatch')
