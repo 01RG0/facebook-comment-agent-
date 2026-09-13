@@ -53,11 +53,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'ignored' })
   }
 
-  // f. Skip if payload.comment.isReply === true
-  if (payload.comment?.isReply === true) {
-    logger.info({ commentId: payload.comment?.id }, 'Webhook ignored: is reply')
-    return NextResponse.json({ status: 'ignored' })
-  }
+  // f. isReply check removed — Zernio marks all Facebook comments as isReply:true
 
   // g. isOwnAccount check removed — page owners may test by commenting on their own posts
 
