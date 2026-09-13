@@ -97,6 +97,11 @@ export async function GET(req: NextRequest) {
       page = inserted
     }
 
+    if (!page) {
+      logger.error({ accountId }, 'Page is null after upsert — unexpected state')
+      return NextResponse.redirect(`${appUrl}/dashboard?error=callback_failed`)
+    }
+
     // 6. Create default settings row for new pages (insert if not exists)
     const { data: existingSettings } = await db
       .from('settings')
