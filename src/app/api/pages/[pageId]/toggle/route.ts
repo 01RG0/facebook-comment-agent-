@@ -22,8 +22,10 @@ export async function POST(
     .select('id, agent_enabled')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!data) return NextResponse.json({ error: 'Page not found' }, { status: 404 })
+  if (error) {
+    if (error.code === 'PGRST116') return NextResponse.json({ error: 'Page not found' }, { status: 404 })
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   return NextResponse.json(data)
 }

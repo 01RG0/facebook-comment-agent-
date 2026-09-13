@@ -31,7 +31,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await db.from('pages').delete().eq('id', pageId).eq('user_id', user.id)
+  const { error: deleteErr } = await db.from('pages').delete().eq('id', pageId).eq('user_id', user.id)
+  if (deleteErr) {
+    logger.error({ err: deleteErr.message, pageId }, 'Failed to delete page row')
+    return NextResponse.json({ error: 'Failed to disconnect page' }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true })
 }

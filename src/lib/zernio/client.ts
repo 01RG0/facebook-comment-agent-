@@ -48,7 +48,8 @@ export async function getConnectUrl(
 
 export async function disconnectAccount(accountId: string): Promise<void> {
   await zernioFetch(`/accounts/${accountId}`, {
-    method: 'DELETE',
+    method: 'PUT',
+    body: JSON.stringify({ isActive: false }),
   })
 }
 

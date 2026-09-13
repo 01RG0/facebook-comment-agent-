@@ -21,7 +21,15 @@ export async function GET(req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin
   const callbackUrl = `${appUrl}/api/facebook/callback?state=${encodeURIComponent(state)}`
 
-  const { authUrl } = await getConnectUrl(profileId, callbackUrl)
+  let authUrl: string
+  try {
+    const result = await getConnectUrl(profileId, callbackUrl)
+    authUrl = result.authUrl
+  } catch (err) {
+    const logger = (await import('@/lib/logger')).logger
+    logger.error({ err: (err as Error).message }, 'Failed to get Zernio connect URL')
+    return NextResponse.redirect(`${appUrl}/dashboard?error=connect_failed`)
+  }
 
   return NextResponse.redirect(authUrl)
 }
