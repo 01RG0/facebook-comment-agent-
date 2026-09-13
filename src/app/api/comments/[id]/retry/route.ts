@@ -21,7 +21,7 @@ export async function POST(
 
   const { data: page } = await supabase
     .from('pages')
-    .select('fb_page_id')
+    .select('fb_page_id, zernio_account_id')
     .eq('id', comment.page_id)
     .single()
 
@@ -33,7 +33,9 @@ export async function POST(
     {
       pageId: comment.page_id,
       fbPageId: page.fb_page_id,
+      zernioAccountId: page.zernio_account_id ?? '',
       commentId: comment.fb_comment_id,
+      platformPostId: comment.fb_post_id,
       postId: comment.fb_post_id,
       from: { id: comment.commenter_id, name: comment.commenter_name },
       message: comment.comment_text,

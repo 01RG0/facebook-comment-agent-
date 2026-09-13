@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     // Look up our internal page record
     const { data: page } = await db
       .from('pages')
-      .select('id, user_id, agent_enabled')
+      .select('id, user_id, agent_enabled, zernio_account_id')
       .eq('fb_page_id', fbPageId)
       .maybeSingle()
 
@@ -68,7 +68,9 @@ export async function POST(req: NextRequest) {
           {
             pageId: page.id,
             fbPageId,
+            zernioAccountId: page.zernio_account_id ?? '',
             commentId: v.comment_id,
+            platformPostId: v.post_id ?? '',
             postId: v.post_id ?? '',
             from: v.from,
             message: v.message,

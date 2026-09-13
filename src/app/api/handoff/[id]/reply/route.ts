@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { decrypt } from '@/lib/crypto'
-import { sendPrivateReply, postPublicCommentReply } from '@/lib/facebook/graph'
+import { sendZernioPrivateReply, sendZernioPublicReply } from '@/lib/zernio/client'
 
 export async function POST(
   req: NextRequest,
@@ -25,29 +24,52 @@ export async function POST(
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (item.status !== 'pending') return NextResponse.json({ error: 'Already handled' }, { status: 409 })
 
-  // Get the page token via admin client (decrypt server-side)
   const db = getAdminClient()
-  const { data: page } = await db
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adminDb = db as any
+
+  const { data: page } = await adminDb
     .from('pages')
-    .select('access_token_enc, access_token_iv')
+    .select('zernio_account_id, fb_page_id')
     .eq('id', item.page_id)
     .single()
 
   if (!page) return NextResponse.json({ error: 'Page not found' }, { status: 404 })
 
-  const pageToken = decrypt(page.access_token_enc, page.access_token_iv)
-  await sendPrivateReply(item.fb_comment_id, reply_text, pageToken)
+  const { data: logRow } = await adminDb
+    .from('comments_log')
+    .select('fb_post_id')
+    .eq('fb_comment_id', item.fb_comment_id)
+    .maybeSingle()
+
+  const platformPostId = logRow?.fb_post_id ?? ''
+
+  await sendZernioPrivateReply(
+    platformPostId,
+    item.fb_comment_id,
+    page.zernio_account_id ?? '',
+    reply_text
+  )
 
   // Post public comment reply on approval if configured
-  const { data: settings } = await db
+  const { data: settings } = await adminDb
     .from('settings')
     .select('public_comment_reply_enabled, public_comment_reply_text, public_comment_on_approval')
     .eq('page_id', item.page_id)
     .single()
 
-  if (settings?.public_comment_reply_enabled && settings?.public_comment_on_approval && settings?.public_comment_reply_text) {
+  if (
+    settings?.public_comment_reply_enabled &&
+    settings?.public_comment_on_approval &&
+    settings?.public_comment_reply_text
+  ) {
     try {
-      await postPublicCommentReply(item.fb_comment_id, settings.public_comment_reply_text, pageToken)
+      await sendZernioPublicReply(
+        platformPostId,
+        item.fb_comment_id,
+        page.zernio_account_id ?? '',
+        settings.public_comment_reply_text
+      )
     } catch {
       // non-fatal — private reply already sent
     }

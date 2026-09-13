@@ -1,10 +1,9 @@
 import { Worker, type Job } from 'bullmq'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createAiProvider } from '@/lib/ai/factory'
-import { sendPrivateReply, sendPrivateImageReply, postPublicCommentReply } from '@/lib/facebook/graph'
-import { decrypt } from '@/lib/crypto'
+import { sendZernioPrivateReply, sendZernioPublicReply } from '@/lib/zernio/client'
 import { logger } from '@/lib/logger'
-import type { CommentJobPayload } from '@/types/meta'
+import type { CommentJobPayload } from '@/types/zernio'
 import { getRedisConnection } from './client'
 import type { AiProviderName } from '@/lib/ai/types'
 
@@ -12,7 +11,7 @@ export function createCommentWorker() {
   const worker = new Worker<CommentJobPayload>(
     'comment-replies',
     async (job: Job<CommentJobPayload>) => {
-      const { pageId, fbPageId, commentId, postId, from, message, createdTime } = job.data
+      const { pageId, fbPageId, zernioAccountId, commentId, platformPostId, postId, from, message, createdTime } = job.data
       const log = logger.child({ jobId: job.id, commentId, pageId })
       const db = getAdminClient()
 
@@ -31,7 +30,7 @@ export function createCommentWorker() {
       // ── 2. Load page + settings ────────────────────────────────────────────
       const { data: page, error: pageErr } = await db
         .from('pages')
-        .select('id, user_id, fb_page_id, access_token_enc, access_token_iv, agent_enabled')
+        .select('id, user_id, fb_page_id, zernio_account_id, agent_enabled')
         .eq('id', pageId)
         .single()
 
@@ -77,7 +76,7 @@ export function createCommentWorker() {
       }
 
       // ── 3b. Reply to own posts only ────────────────────────────────────────
-      if (cfg.reply_to_own_posts_only && !postId.startsWith(page.fb_page_id + '_')) {
+      if (cfg.reply_to_own_posts_only && page.fb_page_id && !page.fb_page_id.startsWith('zernio:') && !postId.startsWith(page.fb_page_id + '_')) {
         log.info({ postId, fbPageId: page.fb_page_id }, 'Post not owned by this page, skipping')
         await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'skipped', skipReason: 'not_own_post' })
         return
@@ -373,20 +372,19 @@ export function createCommentWorker() {
       }
 
       // ── 12. Send private reply (text + optional image attachment) ──────────
-      const pageToken = decrypt(page.access_token_enc, page.access_token_iv)
+      const effectiveAccountId = zernioAccountId ?? page.zernio_account_id ?? ''
+      const effectivePostId = platformPostId ?? postId
       try {
-        await sendPrivateReply(commentId, replyText, pageToken)
+        await sendZernioPrivateReply(effectivePostId, commentId, effectiveAccountId, replyText)
       } catch (msgErr) {
         const errText = (msgErr as Error).message.toLowerCase()
-        const isBlocked = errText.includes("can't receive") || errText.includes("cannot receive")
-          || errText.includes("opted out") || errText.includes("isn't available")
-          || errText.includes("privacy") || errText.includes('551') || errText.includes('2018278')
+        const isBlocked = errText.includes('privatereplyconsumed') || errText.includes('2018278') || errText.includes('551') || errText.includes('messaging') || errText.includes('privacy') || errText.includes('opted out') || errText.includes('blocked')
         if (!isBlocked) throw msgErr
         log.warn({ err: (msgErr as Error).message }, 'Private messaging blocked — posting public fallback')
         const fallbackText = ((cfg as Record<string, unknown>).messaging_unavailable_reply as string | null)?.trim()
           || 'ابعتلنا مسدج ع رسائل الصفحة وهيتم الرد وتوضيح كل التفاصيل'
         try {
-          await postPublicCommentReply(commentId, fallbackText, pageToken)
+          await sendZernioPublicReply(effectivePostId, commentId, effectiveAccountId, fallbackText)
         } catch (pubFallbackErr) {
           log.warn({ err: (pubFallbackErr as Error).message }, 'Public fallback also failed')
         }
@@ -395,15 +393,7 @@ export function createCommentWorker() {
       }
 
       if (imageAssetId) {
-        const imageAsset = imageAssets.find(a => a.id === imageAssetId)
-        if (imageAsset?.file_url) {
-          try {
-            await sendPrivateImageReply(commentId, imageAsset.file_url, pageToken)
-            log.info({ assetId: imageAssetId }, 'Image attachment sent')
-          } catch (imgErr) {
-            log.warn({ assetId: imageAssetId, err: (imgErr as Error).message }, 'Image send failed — text reply already sent')
-          }
-        }
+        log.warn({ assetId: imageAssetId }, 'Image attachment skipped -- Zernio private-reply does not support image attachments')
       }
       // ── 12b. Post public comment reply ────────────────────────────────────
       const pubEnabled = (cfg as Record<string, unknown>).public_comment_reply_enabled as boolean | null
@@ -434,7 +424,7 @@ export function createCommentWorker() {
             }
           }
 
-          await postPublicCommentReply(commentId, publicReplyText, pageToken)
+          await sendZernioPublicReply(effectivePostId, commentId, effectiveAccountId, publicReplyText)
           log.info({ mode: pubMode }, 'Public comment reply posted')
         } catch (pubErr) {
           log.warn({ err: (pubErr as Error).message }, 'Public comment reply failed — private reply already sent')

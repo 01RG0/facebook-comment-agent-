@@ -6,9 +6,7 @@ import { logger } from '@/lib/logger'
 const worker = createCommentWorker()
 const queue = getCommentQueue()
 
-// ── Token refresh job (Phase 8) ───────────────────────────────────────────
-import { scheduleTokenRefresh } from './token-refresh'
-scheduleTokenRefresh()
+// Token refresh removed -- Zernio manages OAuth tokens
 
 // ── Health & queue monitor (runs on import via setInterval) ───────────────
 import '@/monitor/index'
