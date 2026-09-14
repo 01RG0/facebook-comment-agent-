@@ -16,3 +16,19 @@ ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "contacts_own" ON contacts FOR ALL USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_platform_user_id ON contacts(platform_user_id);
+
+-- RPC function to increment comment_count and update last_seen_at
+CREATE OR REPLACE FUNCTION increment_contact_count(
+  p_user_id UUID,
+  p_platform_user_id TEXT,
+  p_platform TEXT
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE contacts
+  SET comment_count = comment_count + 1,
+      last_seen_at = NOW()
+  WHERE user_id = p_user_id
+    AND platform_user_id = p_platform_user_id
+    AND platform = p_platform;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
