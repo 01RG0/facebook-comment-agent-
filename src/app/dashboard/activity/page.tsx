@@ -20,18 +20,17 @@ export default async function ActivityPage({ searchParams }: Props) {
 
   let stats = { replied: 0, skipped: 0, failed: 0, total: 0 }
   if (selectedPageId) {
-    const { data: counts } = await supabase
-      .from('comments_log')
-      .select('status')
-      .eq('page_id', selectedPageId)
-
-    if (counts) {
-      stats.total = counts.length
-      counts.forEach(r => {
-        if (r.status === 'replied') stats.replied++
-        if (r.status === 'skipped') stats.skipped++
-        if (r.status === 'failed') stats.failed++
-      })
+    const [replied, skipped, failed, total] = await Promise.all([
+      supabase.from('comments_log').select('id', { count: 'exact', head: true }).eq('page_id', selectedPageId).eq('status', 'replied'),
+      supabase.from('comments_log').select('id', { count: 'exact', head: true }).eq('page_id', selectedPageId).eq('status', 'skipped'),
+      supabase.from('comments_log').select('id', { count: 'exact', head: true }).eq('page_id', selectedPageId).eq('status', 'failed'),
+      supabase.from('comments_log').select('id', { count: 'exact', head: true }).eq('page_id', selectedPageId),
+    ])
+    stats = {
+      replied: replied.count ?? 0,
+      skipped: skipped.count ?? 0,
+      failed: failed.count ?? 0,
+      total: total.count ?? 0,
     }
   }
 

@@ -13,6 +13,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: { default: 'FB Comment Agent', template: '%s | FB Comment Agent' },
   description: 'AI-powered Facebook comment reply automation',
+  icons: { icon: '/favicon.svg' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
