@@ -82,11 +82,12 @@ export async function sendZernioPublicReply(
   accountId: string,
   message: string
 ): Promise<void> {
+  // Try comment-only path first (postId not needed to identify a comment)
   await zernioFetch(
-    `/inbox/comments/${encodeURIComponent(platformPostId)}/${encodeURIComponent(commentId)}/reply`,
+    `/inbox/comments/${encodeURIComponent(commentId)}/reply`,
     {
       method: 'POST',
-      body: JSON.stringify({ accountId, message }),
+      body: JSON.stringify({ accountId, platformPostId, message }),
     }
   )
 }
