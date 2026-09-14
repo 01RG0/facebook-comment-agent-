@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 import { friendlyError } from '@/lib/friendly-errors'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface Page { id: string; page_name: string }
 
@@ -100,8 +101,8 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     public_comment_reply_enabled: initialSettings?.public_comment_reply_enabled ?? false,
     public_comment_reply_mode: initialSettings?.public_comment_reply_mode ?? 'static',
     public_comment_ai_instructions: initialSettings?.public_comment_ai_instructions ?? '',
-    messaging_unavailable_reply: initialSettings?.messaging_unavailable_reply ?? 'ابعتلنا مسدج ع رسائل الصفحة وهيتم الرد وتوضيح كل التفاصيل',
-    public_comment_reply_text: initialSettings?.public_comment_reply_text ?? 'تم إرسال التفاصيل برايفت 📩',
+    messaging_unavailable_reply: initialSettings?.messaging_unavailable_reply ?? 'Please send us a message on the page inbox and we will get back to you with all the details.',
+    public_comment_reply_text: initialSettings?.public_comment_reply_text ?? 'Details have been sent to your inbox 📩',
     public_comment_on_approval: initialSettings?.public_comment_on_approval ?? true,
   })
 
@@ -258,6 +259,16 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
 
       {selectedPageId && (
         <form onSubmit={handleSave} className="space-y-6">
+          <Tabs defaultValue="ai-model">
+            <TabsList className="flex flex-wrap gap-1 h-auto bg-gray-100 dark:bg-gray-800 p-1 rounded-xl mb-2">
+              <TabsTrigger value="ai-model" className="rounded-lg text-sm px-4 py-2">🤖 AI & Model</TabsTrigger>
+              <TabsTrigger value="facebook" className="rounded-lg text-sm px-4 py-2">💬 Facebook Rules</TabsTrigger>
+              <TabsTrigger value="handoff" className="rounded-lg text-sm px-4 py-2">🤝 Handoff</TabsTrigger>
+            </TabsList>
+
+          {/* ── TAB 1: AI & Model ─────────────────────────────────────── */}
+          <TabsContent value="ai-model" className="space-y-6 mt-0">
+
           {/* AI Provider */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
             <h2 className="font-semibold text-gray-900 dark:text-white">🤖 AI Provider</h2>
@@ -465,6 +476,11 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
             </div>
           </div>
 
+          </TabsContent>
+
+          {/* ── TAB 2: Facebook Rules ──────────────────────────────────── */}
+          <TabsContent value="facebook" className="space-y-6 mt-0">
+
           {/* Facebook Comment Behavior */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
             <div>
@@ -586,7 +602,6 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                 type="text"
                 value={form.messaging_unavailable_reply}
                 onChange={e => setForm(f => ({ ...f, messaging_unavailable_reply: e.target.value }))}
-                dir="rtl"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="text-xs text-gray-500 mt-1">
@@ -669,8 +684,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                         value={form.public_comment_ai_instructions}
                         onChange={e => setForm(f => ({ ...f, public_comment_ai_instructions: e.target.value }))}
                         rows={5}
-                        placeholder={`أنت ترد على كومنت فيسبوك بشكل علني. اكتب رد قصير جدًا (جملة واحدة أو كلمتين بحد أقصى) باللغة العربية.\nقواعد صارمة: لا تذكر أسعار أو تفاصيل خاصة أو أرقام هواتف أو عناوين — هذه تُرسل برايفت.\nأمثلة: "سنة كام؟" / "بالتوفيق يارب" / "الاسبوع القادم 🥰" / "تابع البيدج 😊"\nاكتب الرد فقط — بدون أي شرح.`}
-                        dir="rtl"
+                        placeholder={`Write a very short public reply (1 sentence max). Do NOT mention prices, phone numbers, or private details — those go in the private message.\nExamples: "Sure! 😊" / "Check your inbox 📩" / "We'll reach out shortly"\nWrite the reply only — no explanation.`}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                       />
                       <p className="text-xs text-gray-500 mt-1">
@@ -685,9 +699,8 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                         type="text"
                         value={form.public_comment_reply_text ?? ''}
                         onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
-                        placeholder="تم إرسال التفاصيل برايفت 📩"
+                        placeholder="Details have been sent to your inbox 📩"
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        dir="rtl"
                       />
                     </div>
                   </div>
@@ -708,6 +721,11 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
               </div>
             )}
           </div>
+
+          </TabsContent>
+
+          {/* ── TAB 3: Handoff ────────────────────────────────────────── */}
+          <TabsContent value="handoff" className="space-y-6 mt-0">
 
           {/* Human Handoff */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
@@ -781,7 +799,10 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
             )}
           </div>
 
-          {/* Save Button */}
+          </TabsContent>
+          </Tabs>
+
+          {/* Save Button — always visible outside tabs */}
           <div className="flex justify-end">
             <button
               type="submit"

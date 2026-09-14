@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { friendlyError } from '@/lib/friendly-errors'
 
 interface DailyStat {
   date: string
@@ -130,19 +131,19 @@ export default function AnalyticsPage() {
             {daily.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">No data in this period</p>
             ) : (
-              <div className="flex items-end gap-2 h-40">
+              <div className="flex items-end gap-2" style={{ height: '160px' }}>
                 {daily.map(d => {
                   const total = d.replied + d.skipped + d.failed
-                  const height = Math.max((total / maxBar) * 100, 2)
+                  const barHeight = Math.max(Math.round((total / maxBar) * 128), 4)
                   return (
-                    <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group relative">
-                      <div className="absolute bottom-8 hidden group-hover:flex flex-col items-center bg-gray-800 text-white text-xs rounded px-2 py-1 z-10 whitespace-nowrap shadow-lg">
+                    <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group relative" style={{ height: '160px', justifyContent: 'flex-end' }}>
+                      <div className="absolute hidden group-hover:flex flex-col items-center bg-gray-800 text-white text-xs rounded px-2 py-1 z-10 whitespace-nowrap shadow-lg" style={{ bottom: '28px' }}>
                         <span>{d.date}</span>
                         <span className="text-green-400">{d.replied} replied</span>
                         <span className="text-yellow-400">{d.skipped} skipped</span>
                         <span className="text-red-400">{d.failed} failed</span>
                       </div>
-                      <div className="w-full rounded-t" style={{ height: `${height}%`, background: 'linear-gradient(to top, #ef4444 0%, #f59e0b 40%, #22c55e 70%)' }} />
+                      <div className="w-full rounded-t" style={{ height: `${barHeight}px`, background: 'linear-gradient(to top, #ef4444 0%, #f59e0b 40%, #22c55e 70%)' }} />
                       <span className="text-xs text-gray-400 truncate w-full text-center">{d.date.slice(5)}</span>
                     </div>
                   )
@@ -194,7 +195,7 @@ export default function AnalyticsPage() {
                       <tr key={f.id}>
                         <td className="py-2 pr-4 font-medium text-gray-900 dark:text-white truncate max-w-[120px]">{f.commenter_name}</td>
                         <td className="py-2 pr-4 text-gray-600 dark:text-gray-400 truncate max-w-[180px]">{f.comment_text}</td>
-                        <td className="py-2 pr-4 text-red-500 text-xs truncate max-w-[200px]">{f.error_message}</td>
+                        <td className="py-2 pr-4 text-red-500 text-xs truncate max-w-[200px]">{friendlyError(f.error_message)}</td>
                         <td className="py-2 pr-4 text-gray-500 text-xs">{f.page_name}</td>
                         <td className="py-2 text-gray-400 text-xs whitespace-nowrap">{new Date(f.created_at).toLocaleString()}</td>
                       </tr>

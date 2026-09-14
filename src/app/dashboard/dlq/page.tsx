@@ -132,8 +132,8 @@ export default function DLQPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Failed Comments (DLQ)</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">Comments that failed after all retry attempts</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Failed Messages</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">Comments the agent could not send after multiple tries — review and retry manually</p>
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
           <input

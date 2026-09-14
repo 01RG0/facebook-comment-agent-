@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
-import { BarChart2, Settings, Unlink } from 'lucide-react'
+import { BarChart2, Settings, Unlink, AlertTriangle } from 'lucide-react'
 import { friendlyError } from '@/lib/friendly-errors'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -190,12 +190,19 @@ export default function PagesList({ initialPages }: Props) {
                           Live
                         </Badge>
                       ) : (
-                        <Badge
-                          variant="outline"
-                          className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 font-medium"
-                        >
-                          Not Subscribed
-                        </Badge>
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge
+                            variant="outline"
+                            title="Webhook not connected — comments won't be received"
+                            className="bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700/80 font-medium inline-flex items-center gap-1.5 px-2 py-0.5"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <span>Setup Required</span>
+                          </Badge>
+                          <p className="text-[11px] text-amber-700/90 dark:text-amber-400/90 font-medium leading-tight">
+                            Webhook not connected — comments won&apos;t be received
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
