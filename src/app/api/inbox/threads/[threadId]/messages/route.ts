@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { sendPrivateReply } from '@/lib/zernio/client'
+import { sendZernioConversationMessage, sendZernioDirectMessage } from '@/lib/zernio/client'
 
 async function verifyThreadAccess(threadId: string, userId: string) {
   const adminDb = getAdminClient() as any
@@ -118,18 +118,22 @@ export async function POST(
     const page = thread.page
     const accountId = page?.zernio_account_id ?? ''
 
-    // Call Zernio sendPrivateReply
+    // Call Zernio conversation messaging
     let zernioMsgId: string | null = null
     if (accountId) {
       try {
-        const res = await sendPrivateReply('', thread.sender_id, accountId, text)
+        // In Zernio, conversationId for Facebook Messenger is the participant/conversation ID (thread.sender_id)
+        const res = await sendZernioConversationMessage(thread.sender_id, accountId, text)
         zernioMsgId = res?.messageId ?? null
-      } catch (sendErr: any) {
-        // In case sendPrivateReply throws, return error
-        return NextResponse.json(
-          { error: `Failed to send reply via Zernio: ${sendErr?.message || sendErr}` },
-          { status: 502 }
-        )
+      } catch (convErr: any) {
+        try {
+          await sendZernioDirectMessage(accountId, thread.sender_id, text)
+        } catch (dmErr: any) {
+          return NextResponse.json(
+            { error: `Failed to send reply via Zernio: ${convErr?.message || dmErr?.message || 'Platform error'}` },
+            { status: 502 }
+          )
+        }
       }
     }
 

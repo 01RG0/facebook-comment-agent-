@@ -161,6 +161,18 @@ export async function sendZernioDirectMessage(
   })
 }
 
+export async function sendZernioConversationMessage(
+  conversationId: string,
+  accountId: string,
+  message: string
+): Promise<{ messageId?: string }> {
+  const res = await zernioFetch(`/inbox/conversations/${encodeURIComponent(conversationId)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ accountId, message }),
+  })
+  return res.json()
+}
+
 export async function createZernioWebhook(
   webhookUrl: string,
   secret: string
