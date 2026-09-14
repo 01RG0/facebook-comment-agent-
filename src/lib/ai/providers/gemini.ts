@@ -6,7 +6,7 @@ export class GeminiProvider implements AiProvider {
   readonly providerName = 'gemini'
   readonly modelName: string
 
-  constructor(apiKey: string, model = 'gemini-2.0-flash') {
+  constructor(apiKey: string, model = 'gemini-2.5-flash') {
     this.client = new GoogleGenAI({ apiKey })
     this.modelName = model
   }
