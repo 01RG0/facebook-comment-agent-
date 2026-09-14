@@ -82,14 +82,13 @@ export async function sendZernioPublicReply(
   accountId: string,
   message: string
 ): Promise<void> {
-  await zernioFetch(`/inbox/comments/${encodeURIComponent(platformPostId)}`, {
-    method: 'POST',
-    body: JSON.stringify({
-      accountId,
-      message,
-      commentId,
-    }),
-  })
+  await zernioFetch(
+    `/inbox/comments/${encodeURIComponent(platformPostId)}/${encodeURIComponent(commentId)}/reply`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ accountId, message }),
+    }
+  )
 }
 
 export async function sendZernioImageInConversation(
@@ -187,11 +186,22 @@ export async function createZernioWebhook(
   return { id: data.webhook?._id ?? data.id ?? '' }
 }
 
-export async function getZernioComments(accountId: string, limit = 50): Promise<any> {
+// Returns posts (with commentCount, picture, content)
+export async function getZernioPosts(accountId: string, limit = 50): Promise<any> {
   const params = new URLSearchParams({ accountId, limit: String(limit) })
   const res = await zernioFetch('/inbox/comments?' + params.toString())
   return res.json()
 }
+
+// Returns comments for a specific post
+export async function getZernioPostComments(postId: string, accountId: string): Promise<any> {
+  const params = new URLSearchParams({ accountId })
+  const res = await zernioFetch(`/inbox/comments/${encodeURIComponent(postId)}?${params}`)
+  return res.json()
+}
+
+// Keep old name as alias
+export const getZernioComments = getZernioPosts
 
 export async function hideZernioComment(platformPostId: string, commentId: string, accountId: string): Promise<void> {
   await zernioFetch('/inbox/comments/' + encodeURIComponent(platformPostId) + '/' + encodeURIComponent(commentId) + '/hide', {
