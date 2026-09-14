@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
     const messageText = typeof payload.message === 'string'
       ? payload.message
       : (msgObj.text ?? msgObj.message ?? payload.text ?? '')
+    const fbMessageId = msgObj.id || msgObj.fb_message_id || msgObj.message_id || payload.fb_message_id || payload.message_id || payload.id || null
 
     logger.info(
       { event: eventType, senderId, senderName, accountId, fbMessageId },
