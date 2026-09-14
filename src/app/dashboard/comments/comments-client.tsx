@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   MessageSquare, RefreshCw, ChevronLeft, Reply,
-  Mail, EyeOff, Trash2, Send, Search, Loader2,
+  Mail, EyeOff, Eye, Trash2, Send, Search, Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -141,6 +141,20 @@ export default function CommentsClient() {
       toast.success('Comment hidden')
       setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: true } : c))
     } catch (err: any) { toast.error(err?.message || 'Failed to hide') }
+  }
+
+  const unhideComment = async (comment: Comment) => {
+    if (!selectedPost) return
+    try {
+      const res = await fetch(`/api/comments/${encodeURIComponent(comment.id)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unhide', platformPostId: selectedPost.id, accountId: selectedPost.zernio_account_id }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error)
+      toast.success('Comment unhidden')
+      setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: false } : c))
+    } catch (err: any) { toast.error(err?.message || 'Failed to unhide') }
   }
 
   const deleteComment = async (comment: Comment) => {
@@ -365,6 +379,14 @@ export default function CommentsClient() {
                               className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 transition"
                             >
                               <EyeOff className="w-3.5 h-3.5" /><span className="hidden sm:inline">Hide</span>
+                            </button>
+                          )}
+                          {comment.isHidden && (
+                            <button
+                              onClick={() => unhideComment(comment)}
+                              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/30 transition"
+                            >
+                              <Eye className="w-3.5 h-3.5" /><span className="hidden sm:inline">Unhide</span>
                             </button>
                           )}
                           {comment.canDelete && (

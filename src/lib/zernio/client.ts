@@ -210,6 +210,13 @@ export async function hideZernioComment(platformPostId: string, commentId: strin
   })
 }
 
+export async function unhideZernioComment(platformPostId: string, commentId: string, accountId: string): Promise<void> {
+  const params = new URLSearchParams({ accountId })
+  await zernioFetch(`/inbox/comments/${encodeURIComponent(platformPostId)}/${encodeURIComponent(commentId)}/hide?${params}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function deleteZernioComment(platformPostId: string, commentId: string, accountId: string): Promise<void> {
   const params = new URLSearchParams({ accountId, commentId })
   await zernioFetch(`/inbox/comments/${encodeURIComponent(platformPostId)}?${params}`, {

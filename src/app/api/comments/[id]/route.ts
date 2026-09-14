@@ -4,6 +4,7 @@ import {
   sendZernioPublicReply,
   sendZernioDirectMessage,
   hideZernioComment,
+  unhideZernioComment,
   deleteZernioComment,
 } from '@/lib/zernio/client'
 import { logger } from '@/lib/logger'
@@ -76,6 +77,13 @@ export async function POST(
           return NextResponse.json({ error: 'platformPostId required for hide' }, { status: 400 })
         }
         await hideZernioComment(platformPostId, id, accountId)
+        break
+      }
+      case 'unhide': {
+        if (!platformPostId) {
+          return NextResponse.json({ error: 'platformPostId required for unhide' }, { status: 400 })
+        }
+        await unhideZernioComment(platformPostId, id, accountId)
         break
       }
       case 'delete': {
