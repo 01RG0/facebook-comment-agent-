@@ -82,12 +82,11 @@ export async function sendZernioPublicReply(
   accountId: string,
   message: string
 ): Promise<void> {
-  // Try comment-only path first (postId not needed to identify a comment)
   await zernioFetch(
-    `/inbox/comments/${encodeURIComponent(commentId)}/reply`,
+    `/inbox/comments/${encodeURIComponent(platformPostId)}`,
     {
       method: 'POST',
-      body: JSON.stringify({ accountId, platformPostId, message }),
+      body: JSON.stringify({ accountId, message, commentId }),
     }
   )
 }
@@ -212,8 +211,8 @@ export async function hideZernioComment(platformPostId: string, commentId: strin
 }
 
 export async function deleteZernioComment(platformPostId: string, commentId: string, accountId: string): Promise<void> {
-  await zernioFetch('/inbox/comments/' + encodeURIComponent(platformPostId) + '/' + encodeURIComponent(commentId), {
+  const params = new URLSearchParams({ accountId, commentId })
+  await zernioFetch(`/inbox/comments/${encodeURIComponent(platformPostId)}?${params}`, {
     method: 'DELETE',
-    body: JSON.stringify({ accountId }),
   })
 }
