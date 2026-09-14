@@ -161,7 +161,7 @@ export async function createZernioWebhook(
       name: 'comment-agent',
       url: webhookUrl,
       secret,
-      events: ['comment.received'],
+      events: ['comment.received', 'message.received', 'message.sent'],
       isActive: true,
     }),
   })
