@@ -227,27 +227,47 @@ async function checkWebhookSubscriptions() {
       })
     }
 
-    // Spot-check: verify the first enabled page's subscription is actually live on Facebook
-    const { data: activePage } = await db
-      .from('pages')
-      .select('fb_page_id, page_name, access_token_enc, access_token_iv')
-      .eq('agent_enabled', true)
-      .eq('webhook_subscribed', true)
-      .limit(1)
-      .maybeSingle() as { data: { fb_page_id: string; page_name: string; access_token_enc: string; access_token_iv: string } | null }
-
-    if (activePage?.access_token_enc) {
-      const token = decrypt(activePage.access_token_enc, activePage.access_token_iv)
-      const res = await fetch(
-        `https://graph.facebook.com/v21.0/${activePage.fb_page_id}/subscribed_apps`,
-        { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8_000) }
-      )
-      const data = await res.json() as { data?: { subscribed_fields?: string[] }[] }
-      const subscribed = data.data?.some(app => app.subscribed_fields?.includes('feed'))
-      if (!subscribed) {
-        await logEvent('webhooks', 'warn', `Page "${activePage.page_name}" has no active feed webhook subscription on Facebook`, {
-          fb_page_id: activePage.fb_page_id,
+    // Spot-check: if using Zernio, verify webhook is active on Zernio
+    const zernioApiKey = process.env.ZERNIO_API_KEY
+    if (zernioApiKey) {
+      try {
+        const res = await fetch('https://zernio.com/api/v1/webhooks/settings', {
+          headers: { Authorization: `Bearer ${zernioApiKey}` },
+          signal: AbortSignal.timeout(8_000),
         })
+        if (res.ok) {
+          const data = (await res.json()) as { webhooks?: { isActive?: boolean; url?: string }[] }
+          const activeWebhook = data.webhooks?.find(w => w.isActive)
+          if (!activeWebhook) {
+            await logEvent('webhooks', 'warn', 'No active Zernio webhook found in settings')
+          }
+        }
+      } catch (zErr) {
+        await logEvent('webhooks', 'warn', `Failed to verify Zernio webhook: ${(zErr as Error).message}`)
+      }
+    } else {
+      // Legacy Meta direct check (only if non-zernio page token exists)
+      const { data: activePage } = await db
+        .from('pages')
+        .select('fb_page_id, page_name, access_token_enc, access_token_iv')
+        .eq('agent_enabled', true)
+        .eq('webhook_subscribed', true)
+        .limit(1)
+        .maybeSingle() as { data: { fb_page_id: string; page_name: string; access_token_enc: string; access_token_iv: string } | null }
+
+      if (activePage?.access_token_enc && activePage.access_token_enc !== 'zernio') {
+        const token = decrypt(activePage.access_token_enc, activePage.access_token_iv)
+        const res = await fetch(
+          `https://graph.facebook.com/v21.0/${activePage.fb_page_id}/subscribed_apps`,
+          { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8_000) }
+        )
+        const data = await res.json() as { data?: { subscribed_fields?: string[] }[] }
+        const subscribed = data.data?.some(app => app.subscribed_fields?.includes('feed'))
+        if (!subscribed) {
+          await logEvent('webhooks', 'warn', `Page "${activePage.page_name}" has no active feed webhook subscription on Facebook`, {
+            fb_page_id: activePage.fb_page_id,
+          })
+        }
       }
     }
   } catch (err) {
