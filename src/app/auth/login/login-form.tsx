@@ -9,6 +9,7 @@ type Mode = 'login' | 'signup' | 'reset'
 
 export default function LoginForm() {
   const [mode, setMode] = useState<Mode>('login')
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -34,7 +35,10 @@ export default function LoginForm() {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: { full_name: name.trim() || undefined },
+        },
       })
       setLoading(false)
       if (error) { toast.error(friendlyError(error)); return }
@@ -72,6 +76,16 @@ export default function LoginForm() {
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {mode === 'signup' && (
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Your full name"
+            autoComplete="name"
+            className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+          />
+        )}
         <input
           type="email"
           value={email}

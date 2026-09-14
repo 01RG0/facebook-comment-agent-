@@ -186,3 +186,23 @@ export async function createZernioWebhook(
   const data = await res.json()
   return { id: data.webhook?._id ?? data.id ?? '' }
 }
+
+export async function getZernioComments(accountId: string, limit = 50): Promise<any> {
+  const params = new URLSearchParams({ accountId, limit: String(limit) })
+  const res = await zernioFetch('/inbox/comments?' + params.toString())
+  return res.json()
+}
+
+export async function hideZernioComment(platformPostId: string, commentId: string, accountId: string): Promise<void> {
+  await zernioFetch('/inbox/comments/' + encodeURIComponent(platformPostId) + '/' + encodeURIComponent(commentId) + '/hide', {
+    method: 'POST',
+    body: JSON.stringify({ accountId }),
+  })
+}
+
+export async function deleteZernioComment(platformPostId: string, commentId: string, accountId: string): Promise<void> {
+  await zernioFetch('/inbox/comments/' + encodeURIComponent(platformPostId) + '/' + encodeURIComponent(commentId), {
+    method: 'DELETE',
+    body: JSON.stringify({ accountId }),
+  })
+}
