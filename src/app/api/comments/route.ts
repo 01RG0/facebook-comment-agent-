@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     const pageId = searchParams.get('pageId')
     const postId = searchParams.get('postId')
     const accountId = searchParams.get('accountId')
+    const cursor = searchParams.get('cursor') || undefined
 
     // If postId + accountId: return comments for that specific post
     if (postId && accountId) {
@@ -28,9 +29,10 @@ export async function GET(req: NextRequest) {
 
       if (!page) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-      const data = await getZernioPostComments(postId, accountId)
-      // Zernio returns { status, comments: [...] }
+      const data = await getZernioPostComments(postId, accountId, undefined, cursor)
+      // Zernio returns { status, comments: [...], pagination: { nextCursor } } or nextCursor field
       const comments: any[] = Array.isArray(data?.comments) ? data.comments : []
+      const nextCursor = data?.pagination?.nextCursor ?? data?.nextCursor ?? null
 
       const normalized = comments.map((c: any) => ({
         id: String(c.id),
@@ -49,7 +51,7 @@ export async function GET(req: NextRequest) {
         platform: c.platform ?? 'facebook',
       }))
 
-      return NextResponse.json({ comments: normalized })
+      return NextResponse.json({ comments: normalized, nextCursor })
     }
 
     // Otherwise: return posts list for all user pages
@@ -64,12 +66,17 @@ export async function GET(req: NextRequest) {
     if (pagesError) return NextResponse.json({ error: pagesError.message }, { status: 500 })
 
     const posts: any[] = []
+    let nextCursor: string | null = null
 
     await Promise.all(
       (pages ?? []).map(async (page) => {
         if (!page.zernio_account_id) return
         try {
-          const data = await getZernioPosts(page.zernio_account_id)
+          const data = await getZernioPosts(page.zernio_account_id, 50, cursor)
+          const cursorFound = data?.pagination?.nextCursor ?? data?.nextCursor ?? null
+          if (cursorFound) {
+            nextCursor = cursorFound
+          }
           const items: any[] = Array.isArray(data?.data) ? data.data : []
           for (const item of items) {
             posts.push({
@@ -93,7 +100,7 @@ export async function GET(req: NextRequest) {
       })
     )
 
-    return NextResponse.json({ posts })
+    return NextResponse.json({ posts, nextCursor })
   } catch (err: any) {
     logger.error({ err: err?.message }, 'Unexpected error in GET /api/comments')
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

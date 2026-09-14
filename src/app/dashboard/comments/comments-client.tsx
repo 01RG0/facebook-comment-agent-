@@ -54,8 +54,12 @@ function timeAgo(t?: string) {
 
 export default function CommentsClient() {
   const [posts, setPosts] = useState<Post[]>([])
+  const [postsNextCursor, setPostsNextCursor] = useState<string | null>(null)
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false)
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
+  const [commentsNextCursor, setCommentsNextCursor] = useState<string | null>(null)
+  const [loadingMoreComments, setLoadingMoreComments] = useState(false)
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -74,6 +78,7 @@ export default function CommentsClient() {
       ])
       const postsJson = await postsRes.json()
       setPosts(postsJson.posts ?? [])
+      setPostsNextCursor(postsJson.nextCursor ?? null)
       if (aiRes.ok) {
         const aiJson = await aiRes.json()
         if (Array.isArray(aiJson.repliedCommentIds)) {
@@ -87,11 +92,27 @@ export default function CommentsClient() {
     }
   }, [])
 
+  const loadMorePosts = async () => {
+    if (!postsNextCursor || loadingMorePosts) return
+    setLoadingMorePosts(true)
+    try {
+      const res = await fetch(`/api/comments?cursor=${encodeURIComponent(postsNextCursor)}`)
+      const json = await res.json()
+      setPosts(prev => [...prev, ...(json.posts ?? [])])
+      setPostsNextCursor(json.nextCursor ?? null)
+    } catch {
+      toast.error('Failed to load more posts')
+    } finally {
+      setLoadingMorePosts(false)
+    }
+  }
+
   useEffect(() => { loadPosts() }, [loadPosts])
 
   const selectPost = async (post: Post) => {
     setSelectedPost(post)
     setComments([])
+    setCommentsNextCursor(null)
     setCommentsLoading(true)
     setActiveId(null)
     setActionType(null)
@@ -99,10 +120,26 @@ export default function CommentsClient() {
       const res = await fetch(`/api/comments?postId=${encodeURIComponent(post.id)}&accountId=${encodeURIComponent(post.zernio_account_id)}`)
       const json = await res.json()
       setComments(json.comments ?? [])
+      setCommentsNextCursor(json.nextCursor ?? null)
     } catch {
       toast.error('Failed to load comments')
     } finally {
       setCommentsLoading(false)
+    }
+  }
+
+  const loadMoreComments = async () => {
+    if (!selectedPost || !commentsNextCursor || loadingMoreComments) return
+    setLoadingMoreComments(true)
+    try {
+      const res = await fetch(`/api/comments?postId=${encodeURIComponent(selectedPost.id)}&accountId=${encodeURIComponent(selectedPost.zernio_account_id)}&cursor=${encodeURIComponent(commentsNextCursor)}`)
+      const json = await res.json()
+      setComments(prev => [...prev, ...(json.comments ?? [])])
+      setCommentsNextCursor(json.nextCursor ?? null)
+    } catch {
+      toast.error('Failed to load more comments')
+    } finally {
+      setLoadingMoreComments(false)
     }
   }
 
@@ -274,6 +311,24 @@ export default function CommentsClient() {
               </div>
             </button>
           ))}
+          {postsNextCursor && (
+            <div className="pt-2 pb-1 text-center">
+              <button
+                onClick={loadMorePosts}
+                disabled={loadingMorePosts}
+                className="w-full py-2 px-3 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {loadingMorePosts ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Loading more posts...</span>
+                  </>
+                ) : (
+                  <span>Load more posts</span>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -457,6 +512,24 @@ export default function CommentsClient() {
                   </div>
                 )
               })}
+              {commentsNextCursor && (
+                <div className="pt-2 pb-4 text-center">
+                  <button
+                    onClick={loadMoreComments}
+                    disabled={loadingMoreComments}
+                    className="w-full py-2 px-3 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {loadingMoreComments ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Loading more comments...</span>
+                      </>
+                    ) : (
+                      <span>Load more comments</span>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}

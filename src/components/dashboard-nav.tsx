@@ -17,6 +17,7 @@ import {
   Settings,
   ShieldCheck,
   MessageSquare,
+  Star,
   Bell,
   LogOut,
   ChevronDown,
@@ -46,6 +47,7 @@ function getInitials(name: string | null, email: string) {
 const ownerLinks: NavLink[] = [
   { href: '/dashboard', label: 'Pages', icon: <LayoutDashboard className="w-4 h-4" /> },
   { href: '/dashboard/comments', label: 'Comments', icon: <MessageSquare className="w-4 h-4" /> },
+  { href: '/dashboard/reviews', label: 'Reviews', icon: <Star className="w-4 h-4" /> },
   { href: '/dashboard/activity', label: 'Activity', icon: <BarChart2 className="w-4 h-4" /> },
   { href: '/dashboard/inbox', label: 'Inbox', icon: <Inbox className="w-4 h-4" />, hasBadge: true },
   { href: '/dashboard/handoff', label: 'Handoff', icon: <GitPullRequestArrow className="w-4 h-4" /> },

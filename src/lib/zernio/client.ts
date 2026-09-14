@@ -187,16 +187,44 @@ export async function createZernioWebhook(
 }
 
 // Returns posts (with commentCount, picture, content)
-export async function getZernioPosts(accountId: string, limit = 50): Promise<any> {
+export async function getZernioPosts(accountId: string, limit = 50, cursor?: string): Promise<any> {
   const params = new URLSearchParams({ accountId, limit: String(limit) })
+  if (cursor) params.set('cursor', cursor)
   const res = await zernioFetch('/inbox/comments?' + params.toString())
   return res.json()
 }
 
 // Returns comments for a specific post
-export async function getZernioPostComments(postId: string, accountId: string): Promise<any> {
+export async function getZernioPostComments(postId: string, accountId: string, limit?: number, cursor?: string): Promise<any> {
   const params = new URLSearchParams({ accountId })
+  if (limit !== undefined) params.set('limit', String(limit))
+  if (cursor) params.set('cursor', cursor)
   const res = await zernioFetch(`/inbox/comments/${encodeURIComponent(postId)}?${params}`)
+  return res.json()
+}
+
+// Inbox Reviews
+export async function getZernioReviews(accountId: string, limit?: number, cursor?: string): Promise<any> {
+  const params = new URLSearchParams({ accountId })
+  if (limit !== undefined) params.set('limit', String(limit))
+  if (cursor) params.set('cursor', cursor)
+  const res = await zernioFetch(`/inbox/reviews?${params}`)
+  return res.json()
+}
+
+export async function replyToZernioReview(reviewId: string, accountId: string, message: string): Promise<any> {
+  const res = await zernioFetch(`/inbox/reviews/${encodeURIComponent(reviewId)}/reply`, {
+    method: 'POST',
+    body: JSON.stringify({ accountId, message }),
+  })
+  return res.json()
+}
+
+export async function deleteZernioReviewReply(reviewId: string, accountId: string): Promise<any> {
+  const params = new URLSearchParams({ accountId })
+  const res = await zernioFetch(`/inbox/reviews/${encodeURIComponent(reviewId)}/reply?${params}`, {
+    method: 'DELETE',
+  })
   return res.json()
 }
 
