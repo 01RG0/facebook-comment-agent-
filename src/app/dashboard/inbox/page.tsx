@@ -328,11 +328,11 @@ export default function MessengerInboxPage() {
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] md:h-[calc(100vh-8.5rem)] w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
       {/* ==================================================================== */}
-      {/* LEFT PANEL: THREAD LIST (320px wide)                                 */}
+      {/* LEFT PANEL: THREAD LIST (340px-360px wide for comfortable spacing)    */}
       {/* ==================================================================== */}
       <div
         className={cn(
-          'flex flex-col w-full md:w-[320px] md:min-w-[320px] md:max-w-[320px] border-r border-gray-200 bg-gray-50/60 dark:border-gray-800 dark:bg-gray-950/40',
+          'flex flex-col w-full md:w-[340px] md:min-w-[340px] md:max-w-[340px] border-r border-gray-200 bg-gray-50/60 dark:border-gray-800 dark:bg-gray-950/40',
           selectedThreadId ? 'hidden md:flex' : 'flex'
         )}
       >
@@ -436,9 +436,17 @@ export default function MessengerInboxPage() {
               Failed to load conversations
             </div>
           ) : threads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 text-center text-xs text-gray-400">
-              <MessageSquare className="mb-2 h-7 w-7 text-gray-300 dark:text-gray-700" />
-              No conversations found
+            /* ISSUE 1 — Empty left panel when no threads */
+            <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-6 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+                <MessageSquare className="h-6 w-6 text-gray-400 dark:text-gray-500" />
+              </div>
+              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                No conversations yet
+              </h3>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-[220px]">
+                Messenger DMs from your Facebook page will appear here
+              </p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-gray-800/60">
@@ -461,20 +469,29 @@ export default function MessengerInboxPage() {
                 const previewText =
                   thread.last_message?.text || 'No messages yet'
 
+                {/* ISSUE 3 — Thread list items feel cramped */}
                 return (
                   <button
                     key={thread.id}
                     onClick={() => handleSelectThread(thread.id)}
                     className={cn(
-                      'group relative flex w-full items-start gap-2.5 p-3 text-left transition-colors',
+                      'group relative flex w-full items-start gap-3 p-4 text-left transition-colors',
                       isSelected
                         ? 'bg-blue-50/80 border-l-4 border-blue-600 dark:bg-blue-950/30 dark:border-blue-500'
                         : 'hover:bg-gray-100/70 border-l-4 border-transparent dark:hover:bg-gray-800/40'
                     )}
                   >
+                    {/* Unread dot: filled blue circle (8px) on the left edge of the card */}
+                    {isUnread && (
+                      <span
+                        className="absolute left-1.5 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-blue-600 ring-2 ring-white dark:ring-gray-900"
+                        title="Unread"
+                      />
+                    )}
+
                     {/* Avatar with fallback initials */}
                     <div className="relative shrink-0">
-                      <Avatar className="h-9 w-9 border border-gray-200 dark:border-gray-700">
+                      <Avatar className="h-10 w-10 border border-gray-200 dark:border-gray-700">
                         {thread.sender_avatar && (
                           <AvatarImage
                             src={thread.sender_avatar}
@@ -485,49 +502,43 @@ export default function MessengerInboxPage() {
                           {getInitials(thread.sender_name, 'U')}
                         </AvatarFallback>
                       </Avatar>
-
-                      {/* Unread badge: Blue dot */}
-                      {isUnread && (
-                        <span
-                          className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-blue-600 ring-2 ring-white dark:ring-gray-900"
-                          title="Unread"
-                        />
-                      )}
                     </div>
 
                     {/* Content */}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                      {/* Top line: Sender name (bolder) and Time in top-right corner */}
+                      <div className="flex items-baseline justify-between gap-2 mb-1">
                         <span
                           className={cn(
-                            'truncate text-xs font-medium text-gray-900 dark:text-gray-100',
-                            isUnread && 'font-bold'
+                            'truncate text-sm font-semibold text-gray-900 dark:text-gray-100',
+                            isUnread ? 'font-bold text-gray-950 dark:text-white' : 'font-semibold'
                           )}
                         >
                           {thread.sender_name || 'Facebook User'}
                         </span>
-                        <span className="shrink-0 text-[10px] text-gray-400">
+                        <span className="shrink-0 text-[11px] text-gray-400">
                           {timeAgo}
                         </span>
                       </div>
 
-                      {/* Last message preview (truncated) */}
+                      {/* Last message preview: gray-500, max 2 lines (line-clamp-2) */}
                       <p
                         className={cn(
-                          'truncate text-[11px] text-gray-500 dark:text-gray-400',
-                          isUnread && 'font-medium text-gray-900 dark:text-gray-200'
+                          'text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed',
+                          isUnread && 'font-medium text-gray-800 dark:text-gray-200'
                         )}
                       >
                         {previewText}
                       </p>
 
-                      {/* Footer badges: Priority badge (red for urgent), Assigned agent initials */}
-                      <div className="mt-1.5 flex items-center gap-1.5">
+                      {/* Footer badges: Priority badge / Urgent chip, Status, Assigned agent */}
+                      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                         {isUrgent && (
                           <Badge
                             variant="destructive"
-                            className="h-4 px-1 text-[9px] font-semibold uppercase tracking-wider"
+                            className="h-4.5 px-1.5 text-[9px] font-bold uppercase tracking-wider bg-red-600 text-white flex items-center gap-1"
                           >
+                            <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                             Urgent
                           </Badge>
                         )}
@@ -535,7 +546,7 @@ export default function MessengerInboxPage() {
                         {thread.status === 'resolved' && (
                           <Badge
                             variant="secondary"
-                            className="h-4 px-1 text-[9px] font-medium text-green-700 bg-green-50 dark:bg-green-950/40 dark:text-green-400"
+                            className="h-4.5 px-1.5 text-[9px] font-medium text-green-700 bg-green-50 dark:bg-green-950/40 dark:text-green-400"
                           >
                             Resolved
                           </Badge>
@@ -544,7 +555,7 @@ export default function MessengerInboxPage() {
                         {thread.status === 'in_progress' && (
                           <Badge
                             variant="secondary"
-                            className="h-4 px-1 text-[9px] font-medium text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400"
+                            className="h-4.5 px-1.5 text-[9px] font-medium text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400"
                           >
                             In Progress
                           </Badge>
@@ -552,7 +563,7 @@ export default function MessengerInboxPage() {
 
                         {assignedInitials && (
                           <span
-                            className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-[9px] font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                            className="ml-auto flex h-4.5 w-4.5 items-center justify-center rounded-full bg-gray-200 text-[9px] font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-300"
                             title={`Assigned to ${thread.assigned_profile?.full_name || thread.assigned_profile?.email}`}
                           >
                             {assignedInitials}
@@ -573,23 +584,23 @@ export default function MessengerInboxPage() {
       {/* ==================================================================== */}
       <div className={cn('flex flex-col flex-1 min-w-0 bg-white dark:bg-gray-900', selectedThreadId ? 'flex' : 'hidden md:flex')}>
         {!selectedThreadId ? (
-          /* Empty state when no thread selected: centered icon + 'Select a conversation' */
-          <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-              <InboxIcon className="h-8 w-8" />
+          /* ISSUE 2 — Empty right panel when no thread selected (desktop) */
+          <div className="flex h-full flex-col items-center justify-center p-8 text-center bg-gray-50/50 dark:bg-gray-950/20">
+            <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-gray-100/80 text-gray-400 dark:bg-gray-800/80 dark:text-gray-500 shadow-inner">
+              <InboxIcon className="h-16 w-16 stroke-[1.25]" />
             </div>
             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              Select a conversation
+              Select a conversation to get started
             </h2>
-            <p className="mt-1 max-w-sm text-xs text-gray-500 dark:text-gray-400">
-              Choose a thread from the left panel to review messages, send replies via Messenger, or collaborate with internal notes.
+            <p className="mt-1.5 max-w-sm text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+              Choose a thread from the left panel to review messages, send replies via Messenger, or collaborate with team notes.
             </p>
           </div>
         ) : (
           <>
-            {/* Header: sender name, avatar, status badge, priority badge, assigned agent dropdown, action buttons */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-3 dark:border-gray-800">
-              <div className="flex items-center gap-3">
+            {/* ISSUE 4 — Conversation header: more padding, larger name, clear badges, labeled Assign dropdown, prominent action buttons */}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-gray-800 bg-white dark:bg-gray-900">
+              <div className="flex items-center gap-3.5">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -600,7 +611,7 @@ export default function MessengerInboxPage() {
                   Back
                 </Button>
 
-                <Avatar className="h-10 w-10 border border-gray-200 dark:border-gray-700">
+                <Avatar className="h-11 w-11 border border-gray-200 dark:border-gray-700">
                   {activeThread?.sender_avatar && (
                     <AvatarImage
                       src={activeThread.sender_avatar}
@@ -613,92 +624,98 @@ export default function MessengerInboxPage() {
                 </Avatar>
 
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                       {activeThread?.sender_name || 'Facebook User'}
                     </h2>
 
                     {/* Status badge */}
                     {activeThread?.status === 'resolved' ? (
-                      <Badge className="bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-950/60 dark:text-green-300 text-[10px] h-5">
+                      <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-950/60 dark:text-green-300 dark:border-green-900/40 text-xs px-2 py-0.5 font-medium">
                         Resolved
                       </Badge>
                     ) : activeThread?.status === 'in_progress' ? (
-                      <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300 text-[10px] h-5">
+                      <Badge className="bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-900/40 text-xs px-2 py-0.5 font-medium">
                         In Progress
                       </Badge>
                     ) : activeThread?.status === 'snoozed' ? (
-                      <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-950/60 dark:text-purple-300 text-[10px] h-5">
+                      <Badge className="bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-900/40 text-xs px-2 py-0.5 font-medium">
                         Snoozed
                       </Badge>
                     ) : (
-                      <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-950/60 dark:text-blue-300 text-[10px] h-5">
+                      <Badge className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-900/40 text-xs px-2 py-0.5 font-medium">
                         Open
                       </Badge>
                     )}
 
                     {/* Priority badge */}
                     {activeThread?.priority === 'urgent' && (
-                      <Badge variant="destructive" className="text-[10px] h-5 uppercase tracking-wide">
+                      <Badge variant="destructive" className="text-xs px-2 py-0.5 uppercase tracking-wide font-semibold flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                         Urgent
                       </Badge>
                     )}
                   </div>
 
-                  <p className="text-[11px] text-gray-400">
-                    ID: {activeThread?.sender_id || '—'}
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    User ID: {activeThread?.sender_id || '—'}
                   </p>
                 </div>
               </div>
 
-              {/* Controls: Assigned agent dropdown + Resolve + Snooze buttons */}
-              <div className="flex items-center gap-2">
-                {/* Assigned agent dropdown (fetches team members) */}
-                <div className="w-44">
-                  <Select
-                    value={activeThread?.assigned_to || 'unassigned'}
-                    onValueChange={handleAssignAgent}
-                  >
-                    <SelectTrigger className="h-8 text-xs bg-white dark:bg-gray-900">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <User className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                        <SelectValue placeholder="Assign agent..." />
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unassigned" className="text-xs">
-                        Unassigned
-                      </SelectItem>
-                      {teamMembers.map((member) => (
-                        <SelectItem key={member.id} value={member.id} className="text-xs">
-                          {member.full_name || member.email}
+              {/* Controls: Labeled assign dropdown + Resolve + Snooze buttons */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                {/* Clear 'Assign to' dropdown */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    Assign to:
+                  </span>
+                  <div className="w-40">
+                    <Select
+                      value={activeThread?.assigned_to || 'unassigned'}
+                      onValueChange={handleAssignAgent}
+                    >
+                      <SelectTrigger className="h-8 text-xs bg-white dark:bg-gray-900">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <User className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                          <SelectValue placeholder="Select agent..." />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned" className="text-xs">
+                          Unassigned
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                        {teamMembers.map((member) => (
+                          <SelectItem key={member.id} value={member.id} className="text-xs">
+                            {member.full_name || member.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
-                {/* Resolve button */}
+                {/* Resolve / Reopen action button */}
                 {activeThread?.status === 'resolved' ? (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 gap-1 text-xs"
+                    className="h-8 gap-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
                     disabled={isUpdatingStatus}
                     onClick={() => handleUpdateStatus('open')}
                   >
-                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
                     Reopen
                   </Button>
                 ) : (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 gap-1 text-xs text-green-700 hover:bg-green-50 hover:text-green-800 dark:text-green-400 dark:hover:bg-green-950/40"
+                    className="h-8 gap-1.5 text-xs font-medium text-green-700 border-green-200 bg-green-50/50 hover:bg-green-100 hover:text-green-800 dark:border-green-900 dark:text-green-400 dark:bg-green-950/30 dark:hover:bg-green-950/50"
                     disabled={isUpdatingStatus}
                     onClick={() => handleUpdateStatus('resolved')}
                   >
-                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                     Resolve
                   </Button>
                 )}
@@ -707,27 +724,27 @@ export default function MessengerInboxPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1 text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className="h-8 gap-1.5 text-xs font-medium text-gray-700 border-gray-300 hover:bg-gray-100 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800"
                   disabled={isUpdatingStatus}
                   onClick={handleSnooze}
                 >
-                  <Clock className="h-3.5 w-3.5 text-gray-500" />
+                  <Clock className="h-4 w-4 text-gray-500" />
                   Snooze
                 </Button>
               </div>
             </div>
 
             {/* Conversation Messages + Notes Timeline */}
-            <ScrollArea className="flex-1 p-5">
+            <ScrollArea className="flex-1 p-6">
               {threadDetailLoading && !threadDetail ? (
                 <div className="flex h-60 items-center justify-center">
                   <RefreshCw className="h-6 w-6 animate-spin text-blue-500" />
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Message Timeline */}
+                  {/* ISSUE 5 — Message Timeline & Bubbles */}
                   {threadDetail?.messages && threadDetail.messages.length > 0 ? (
-                    threadDetail.messages.map((msg) => {
+                    threadDetail.messages.map((msg, index, allMsgs) => {
                       const isInbound = msg.direction === 'inbound'
                       const isAi =
                         msg.sent_by_label?.toLowerCase() === 'ai' ||
@@ -738,8 +755,22 @@ export default function MessengerInboxPage() {
                         ? 'AI'
                         : msg.sent_by_label || activeThread?.assigned_profile?.full_name || 'Agent'
 
-                      const timeString = msg.sent_at
-                        ? format(new Date(msg.sent_at), 'h:mm a')
+                      // Group consecutive messages from same sender (check if next message has same direction and AI status)
+                      const nextMsg = allMsgs[index + 1]
+                      const isNextSameSender =
+                        nextMsg &&
+                        nextMsg.direction === msg.direction &&
+                        (nextMsg.sent_by_label?.toLowerCase() === 'ai' ||
+                          nextMsg.sent_by_label?.toLowerCase() === 'auto-reply' ||
+                          (Boolean(nextMsg.ai_confidence) && !nextMsg.sent_by)) === isAi
+
+                      const isLastInGroup = !isNextSameSender
+
+                      // Format timestamp and relative distance
+                      const sentDate = msg.sent_at ? new Date(msg.sent_at) : null
+                      const timeString = sentDate ? format(sentDate, 'h:mm a') : ''
+                      const relativeTime = sentDate
+                        ? formatDistanceToNow(sentDate, { addSuffix: true })
                         : ''
 
                       return (
@@ -747,36 +778,45 @@ export default function MessengerInboxPage() {
                           key={msg.id}
                           className={cn(
                             'flex flex-col',
-                            isInbound ? 'items-start' : 'items-end'
+                            isInbound ? 'items-start' : 'items-end',
+                            isLastInGroup ? 'mb-3' : 'mb-1'
                           )}
                         >
-                          {/* Message Bubble: inbound = left gray, outbound = right blue */}
+                          {/* Message Bubble:
+                              Inbound: light gray, rounded-2xl rounded-tl-sm, left-aligned, max-w-[75%]
+                              Outbound AI: light blue background with subtle 'AI' purple chip, right-aligned
+                              Outbound Human: darker blue, right-aligned, no AI chip
+                          */}
                           <div
                             className={cn(
-                              'max-w-[75%] rounded-2xl px-4 py-2.5 text-xs shadow-sm leading-relaxed whitespace-pre-wrap break-words',
+                              'max-w-[75%] px-4 py-2.5 text-xs shadow-sm leading-relaxed whitespace-pre-wrap break-words',
                               isInbound
-                                ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100 rounded-tl-sm'
-                                : 'bg-blue-600 text-white dark:bg-blue-600 rounded-tr-sm'
+                                ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100 rounded-2xl rounded-tl-sm'
+                                : isAi
+                                ? 'bg-blue-100 text-blue-950 border border-blue-200/80 dark:bg-blue-950/60 dark:text-blue-100 dark:border-blue-800/60 rounded-2xl rounded-tr-sm'
+                                : 'bg-blue-700 text-white dark:bg-blue-600 rounded-2xl rounded-tr-sm'
                             )}
                           >
                             {msg.text}
                           </div>
 
-                          {/* Meta footer */}
+                          {/* Footer with sent time and sender label (only show on last message of group or always with relative time) */}
                           <div
                             className={cn(
                               'mt-1 flex items-center gap-1.5 px-1 text-[10px] text-gray-400',
                               isInbound ? 'justify-start' : 'justify-end'
                             )}
                           >
-                            <span>{timeString}</span>
+                            <span>
+                              {timeString} {relativeTime ? `(sent ${relativeTime})` : ''}
+                            </span>
 
-                            {/* Below each outbound message show tiny label: 'AI' (purple) or sender's name (gray) */}
+                            {/* Below each outbound message show tiny label: AI chip or sender label */}
                             {!isInbound && (
                               <>
                                 <span>•</span>
                                 {isAi ? (
-                                  <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.2 bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 font-semibold">
+                                  <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 font-medium text-[9px]">
                                     <Sparkles className="h-2.5 w-2.5" />
                                     AI
                                   </span>
@@ -844,11 +884,11 @@ export default function MessengerInboxPage() {
               )}
             </ScrollArea>
 
-            {/* Bottom Actions & Reply Area */}
-            <div className="border-t border-gray-200 bg-gray-50/40 p-4 dark:border-gray-800 dark:bg-gray-950/30 space-y-3">
+            {/* ISSUE 6 — Reply Box */}
+            <div className="border-t border-gray-200 bg-gray-50/50 p-5 dark:border-gray-800 dark:bg-gray-950/40 space-y-3">
               {/* Add Note toggle section */}
               {isNoteOpen ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+                <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-3.5 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30">
                   <div className="flex items-center justify-between mb-2">
                     <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
                       <StickyNote className="h-3.5 w-3.5" />
@@ -866,14 +906,14 @@ export default function MessengerInboxPage() {
                     onChange={(e) => setNoteText(e.target.value)}
                     placeholder="Type an internal note for your team..."
                     rows={2}
-                    className="border-amber-200 bg-white text-xs text-gray-900 focus-visible:ring-amber-500 dark:border-amber-900/50 dark:bg-gray-900 dark:text-gray-100"
+                    className="border-amber-200 bg-white text-xs text-gray-900 focus-visible:ring-amber-500 focus-visible:border-amber-400 dark:border-amber-900/50 dark:bg-gray-900 dark:text-gray-100"
                   />
-                  <div className="mt-2 flex justify-end gap-2">
+                  <div className="mt-2.5 flex justify-end gap-2">
                     <Button
                       variant="ghost"
                       size="xs"
                       onClick={() => setIsNoteOpen(false)}
-                      className="h-7 text-xs"
+                      className="h-7 text-xs text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                     >
                       Cancel
                     </Button>
@@ -881,7 +921,7 @@ export default function MessengerInboxPage() {
                       size="xs"
                       onClick={handleAddNote}
                       disabled={!noteText.trim() || isSavingNote}
-                      className="h-7 bg-amber-600 text-white hover:bg-amber-700 text-xs gap-1"
+                      className="h-7 bg-amber-600 text-white hover:bg-amber-700 text-xs gap-1 shadow-sm"
                     >
                       {isSavingNote ? 'Saving...' : 'Save Note'}
                     </Button>
@@ -889,51 +929,62 @@ export default function MessengerInboxPage() {
                 </div>
               ) : (
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-gray-400">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
                     Replies are sent directly to customer via Messenger
                   </span>
-                  {/* Add Note button: opens a small textarea for internal notes */}
+                  {/* 'Add Note' button: yellow/amber color to distinguish from send */}
                   <Button
+                    type="button"
                     variant="outline"
-                    size="xs"
+                    size="sm"
                     onClick={() => setIsNoteOpen(true)}
-                    className="h-7 gap-1 text-xs text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                    className="h-7 gap-1.5 text-xs font-medium text-amber-800 border-amber-300 bg-amber-50 hover:bg-amber-100 hover:text-amber-900 dark:border-amber-800/80 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
                   >
-                    <StickyNote className="h-3 w-3" />
+                    <StickyNote className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
                     Add Note
                   </Button>
                 </div>
               )}
 
-              {/* Reply Input: textarea + Send button. On send: POST /api/inbox/threads/[id]/messages */}
-              <form onSubmit={handleSendReply} className="flex items-end gap-2">
-                <Textarea
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSendReply()
-                    }
-                  }}
-                  placeholder="Type your reply to customer (Enter to send, Shift+Enter for newline)..."
-                  rows={2}
-                  className="resize-none bg-white text-xs dark:bg-gray-900"
-                />
-                <Button
-                  type="submit"
-                  disabled={!replyText.trim() || isSendingReply}
-                  className="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white shrink-0 gap-1.5 text-xs font-medium"
-                >
-                  {isSendingReply ? (
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Send className="h-3.5 w-3.5" />
-                      Send
-                    </>
-                  )}
-                </Button>
+              {/* Reply Input: textarea with padding & focus ring, character count below, full blue send button */}
+              <form onSubmit={handleSendReply} className="space-y-2">
+                <div className="relative rounded-lg border border-gray-200 bg-white shadow-sm transition-all focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900">
+                  <Textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleSendReply()
+                      }
+                    }}
+                    placeholder="Type your reply to customer (Enter to send, Shift+Enter for newline)..."
+                    rows={3}
+                    className="w-full resize-none border-0 bg-transparent p-3 text-xs leading-relaxed focus-visible:ring-0 focus-visible:outline-none dark:text-gray-100 placeholder:text-gray-400"
+                  />
+                  <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2 dark:border-gray-800">
+                    {/* Character count below textarea */}
+                    <span className="text-[11px] text-gray-400 font-mono">
+                      {replyText.length} characters
+                    </span>
+
+                    {/* Send button: full blue, with Send icon, disabled when empty */}
+                    <Button
+                      type="submit"
+                      disabled={!replyText.trim() || isSendingReply}
+                      className="h-8 px-4 bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-300 dark:disabled:bg-blue-900/50 shrink-0 gap-1.5 text-xs font-semibold shadow-sm transition-colors"
+                    >
+                      {isSendingReply ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <>
+                          <Send className="h-3.5 w-3.5" />
+                          Send
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </form>
             </div>
           </>
@@ -942,3 +993,4 @@ export default function MessengerInboxPage() {
     </div>
   )
 }
+

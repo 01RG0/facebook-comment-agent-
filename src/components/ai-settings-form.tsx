@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
+import { Check, X, Loader2, KeyRound } from 'lucide-react'
 import { friendlyError } from '@/lib/friendly-errors'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface Page { id: string; page_name: string }
 
@@ -70,6 +70,9 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
   const pathname = usePathname()
 
   const [savedKeys, setSavedKeys] = useState<AiKey[]>([])
+  const [hasCustomApiKey, setHasCustomApiKey] = useState(initialSettings?.has_custom_api_key ?? false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  const statusTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     fetch('/api/ai-keys')
@@ -81,6 +84,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
   const [form, setForm] = useState({
     ai_provider: initialSettings?.ai_provider ?? 'gemini',
     ai_model: initialSettings?.ai_model ?? '',
+    ai_api_key: '',
     preferred_ai_key_ids: (initialSettings?.preferred_ai_key_ids as string[] | null) ?? [],
     custom_base_url: initialSettings?.custom_base_url ?? '',
     reply_instructions: initialSettings?.reply_instructions ?? 'You are a helpful assistant. Reply professionally and concisely to customer inquiries about {{business_name}}.',
@@ -106,7 +110,46 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     public_comment_on_approval: initialSettings?.public_comment_on_approval ?? true,
   })
 
-  const [saving, setSaving] = useState(false)
+  // Sync state when initialSettings changes (e.g. switching pages)
+  useEffect(() => {
+    setHasCustomApiKey(initialSettings?.has_custom_api_key ?? false)
+    setForm(f => ({
+      ...f,
+      ai_provider: initialSettings?.ai_provider ?? 'gemini',
+      ai_model: initialSettings?.ai_model ?? '',
+      ai_api_key: '',
+      preferred_ai_key_ids: (initialSettings?.preferred_ai_key_ids as string[] | null) ?? [],
+      custom_base_url: initialSettings?.custom_base_url ?? '',
+      reply_instructions: initialSettings?.reply_instructions ?? 'You are a helpful assistant. Reply professionally and concisely to customer inquiries about {{business_name}}.',
+      reply_language: initialSettings?.reply_language ?? 'auto',
+      reply_delay_seconds: initialSettings?.reply_delay_seconds ?? 0,
+      max_replies_per_hour: initialSettings?.max_replies_per_hour ?? 100,
+      keyword_filter_raw: initialSettings?.keyword_filter?.join(', ') ?? '',
+      blacklisted_user_ids_raw: initialSettings?.blacklisted_user_ids?.join(', ') ?? '',
+      reply_to_own_posts_only: initialSettings?.reply_to_own_posts_only ?? false,
+      reply_tone: initialSettings?.reply_tone ?? 'friendly',
+      reply_length: initialSettings?.reply_length ?? 'medium',
+      reply_blacklist_words_raw: initialSettings?.reply_blacklist_words?.join(', ') ?? '',
+      review_mode_enabled: initialSettings?.review_mode_enabled ?? false,
+      auto_retry_enabled: initialSettings?.auto_retry_enabled ?? true,
+      max_retry_attempts: initialSettings?.max_retry_attempts ?? 3,
+      human_handoff_enabled: initialSettings?.human_handoff_enabled ?? false,
+      human_handoff_keywords_raw: initialSettings?.human_handoff_keywords?.join(', ') ?? '',
+      public_comment_reply_enabled: initialSettings?.public_comment_reply_enabled ?? false,
+      public_comment_reply_mode: initialSettings?.public_comment_reply_mode ?? 'static',
+      public_comment_ai_instructions: initialSettings?.public_comment_ai_instructions ?? '',
+      messaging_unavailable_reply: initialSettings?.messaging_unavailable_reply ?? 'Please send us a message on the page inbox and we will get back to you with all the details.',
+      public_comment_reply_text: initialSettings?.public_comment_reply_text ?? 'Details have been sent to your inbox 📩',
+      public_comment_on_approval: initialSettings?.public_comment_on_approval ?? true,
+    }))
+  }, [initialSettings])
+
+  useEffect(() => {
+    return () => {
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
+    }
+  }, [])
+
   const [testing, setTesting] = useState(false)
   const [testComment, setTestComment] = useState('')
   const [testResult, setTestResult] = useState<{ reply: string; provider: string; model: string } | null>(null)
@@ -141,10 +184,36 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     }
   }
 
+  const handleRemoveApiKey = async () => {
+    if (!selectedPageId) return
+    setSaveStatus('saving')
+    try {
+      const res = await fetch(`/api/pages/${selectedPageId}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ai_api_key: '' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setHasCustomApiKey(false)
+      setForm(f => ({ ...f, ai_api_key: '' }))
+      setSaveStatus('saved')
+      toast.success('API key removed')
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
+      statusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000)
+      router.refresh()
+    } catch (err) {
+      setSaveStatus('failed')
+      toast.error(friendlyError(err))
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
+      statusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000)
+    }
+  }
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedPageId) return
-    setSaving(true)
+    setSaveStatus('saving')
 
     const payload: Record<string, unknown> = {
       ai_provider: form.ai_provider,
@@ -182,19 +251,33 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
       public_comment_on_approval: form.public_comment_on_approval,
     }
 
+    // Include ai_api_key only if user typed a new non-empty value
+    if (form.ai_api_key && form.ai_api_key.trim() !== '') {
+      payload.ai_api_key = form.ai_api_key.trim()
+    }
+
     try {
       const res = await fetch(`/api/pages/${selectedPageId}/settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      if (!res.ok) throw new Error((await res.json()).error)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      if (payload.ai_api_key) {
+        setHasCustomApiKey(true)
+        setForm(f => ({ ...f, ai_api_key: '' }))
+      }
+      setSaveStatus('saved')
       toast.success('Settings saved')
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
+      statusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000)
       router.refresh()
     } catch (err) {
+      setSaveStatus('failed')
       toast.error(friendlyError(err))
-    } finally {
-      setSaving(false)
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
+      statusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000)
     }
   }
 
@@ -259,520 +342,552 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
 
       {selectedPageId && (
         <form onSubmit={handleSave} className="space-y-6">
-          <Tabs defaultValue="ai-model">
-            <TabsList className="flex flex-wrap gap-1 h-auto bg-gray-100 dark:bg-gray-800 p-1 rounded-xl mb-2">
-              <TabsTrigger value="ai-model" className="rounded-lg text-sm px-4 py-2">🤖 AI & Model</TabsTrigger>
-              <TabsTrigger value="facebook" className="rounded-lg text-sm px-4 py-2">💬 Facebook Rules</TabsTrigger>
-              <TabsTrigger value="handoff" className="rounded-lg text-sm px-4 py-2">🤝 Handoff</TabsTrigger>
-            </TabsList>
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm divide-y divide-gray-200 dark:divide-gray-800">
 
-          {/* ── TAB 1: AI & Model ─────────────────────────────────────── */}
-          <TabsContent value="ai-model" className="space-y-6 mt-0">
-
-          {/* AI Provider */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900 dark:text-white">🤖 AI Provider</h2>
-
-            <div className="grid sm:grid-cols-2 gap-4">
+            {/* ── SECTION 1: AI Provider ─────────────────────────────── */}
+            <div className="p-6 space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Provider</label>
-                <select
-                  value={form.ai_provider}
-                  onChange={e => setForm(f => ({ ...f, ai_provider: e.target.value, ai_model: '', custom_base_url: '' }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {AI_PROVIDERS.map(p => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
-                </select>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">AI Provider</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  Select your AI engine, model, and configure custom API keys for this page.
+                </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Model <span className="text-gray-400 font-normal">(optional)</span>
-                </label>
-                <div className="flex gap-2">
-                  {detectedModels.length > 0 ? (
-                    <select
-                      value={form.ai_model}
-                      onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">-- select model --</option>
-                      {detectedModels.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form.ai_model}
-                      onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
-                      placeholder={form.ai_provider === 'gemini' ? 'gemini-2.0-flash' : form.ai_provider === 'mistral' ? 'mistral-large-latest' : 'gpt-4o-mini'}
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleDetectModels}
-                    disabled={detectingModels}
-                    title="Auto-detect available models from provider"
-                    className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg transition border border-gray-300 dark:border-gray-600 whitespace-nowrap"
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Provider</label>
+                  <select
+                    value={form.ai_provider}
+                    onChange={e => setForm(f => ({ ...f, ai_provider: e.target.value, ai_model: '', custom_base_url: '' }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {detectingModels ? '...' : '🔍 Detect'}
-                  </button>
+                    {AI_PROVIDERS.map(p => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
                 </div>
-                {detectedModels.length > 0 && (
-                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">{detectedModels.length} models found</p>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Model <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    {detectedModels.length > 0 ? (
+                      <select
+                        value={form.ai_model}
+                        onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
+                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">-- select model --</option>
+                        {detectedModels.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={form.ai_model}
+                        onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
+                        placeholder={form.ai_provider === 'gemini' ? 'gemini-2.0-flash' : form.ai_provider === 'mistral' ? 'mistral-large-latest' : 'gpt-4o-mini'}
+                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleDetectModels}
+                      disabled={detectingModels}
+                      title="Auto-detect available models from provider"
+                      className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg transition border border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                    >
+                      {detectingModels ? '...' : '🔍 Detect'}
+                    </button>
+                  </div>
+                  {detectedModels.length > 0 && (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">{detectedModels.length} models found</p>
+                  )}
+                </div>
+              </div>
+
+              {/* API Key Field */}
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    API Key
+                  </label>
+                  {hasCustomApiKey && (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full">
+                        <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                        API key saved
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleRemoveApiKey}
+                        disabled={saveStatus === 'saving'}
+                        className="text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:underline transition disabled:opacity-50"
+                      >
+                        Remove key
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={form.ai_api_key}
+                    onChange={e => setForm(f => ({ ...f, ai_api_key: e.target.value }))}
+                    placeholder="Enter API key or leave blank to keep existing"
+                    autoComplete="new-password"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <KeyRound className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Stored securely and encrypted at rest. If omitted, your team or global AI key pool is used.
+                </p>
+              </div>
+
+              {form.ai_provider === 'openai-compat' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Base URL <span className="text-gray-400 font-normal">(e.g. https://openrouter.ai/api/v1)</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={form.custom_base_url}
+                    onChange={e => setForm(f => ({ ...f, custom_base_url: e.target.value }))}
+                    placeholder="https://your-provider.com/v1"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Any OpenAI-compatible API: OpenRouter, Together AI, Groq, Ollama, etc.
+                  </p>
+                </div>
+              )}
+
+              {/* Allowed AI Keys */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Allowed AI Keys
+                </label>
+                {savedKeys.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    No keys added yet. <a href="/dashboard/ai-keys" className="text-blue-500 hover:underline">Add keys →</a>
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {savedKeys.map(k => (
+                      <label key={k.id} className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={form.preferred_ai_key_ids.includes(k.id)}
+                          onChange={e => setForm(f => ({
+                            ...f,
+                            preferred_ai_key_ids: e.target.checked
+                              ? [...f.preferred_ai_key_ids, k.id]
+                              : f.preferred_ai_key_ids.filter(id => id !== k.id),
+                          }))}
+                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                          {k.label}
+                          <span className="text-gray-400 ml-1">· {k.provider}{k.model ? ` / ${k.model}` : ''}</span>
+                          {k.health !== 'healthy' && <span className="ml-1 text-yellow-500 text-xs">⚠ {k.health}</span>}
+                        </span>
+                      </label>
+                    ))}
+                    {form.preferred_ai_key_ids.length === 0 && (
+                      <p className="text-xs text-gray-400 mt-1">None selected — all active keys used (by priority).</p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
 
-            {(form.ai_provider === 'openai-compat') && (
+            {/* ── SECTION 2: Reply Behavior ──────────────────────────── */}
+            <div className="p-6 space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Base URL <span className="text-gray-400 font-normal">(e.g. https://openrouter.ai/api/v1)</span>
-                </label>
-                <input
-                  type="url"
-                  value={form.custom_base_url}
-                  onChange={e => setForm(f => ({ ...f, custom_base_url: e.target.value }))}
-                  placeholder="https://your-provider.com/v1"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Any OpenAI-compatible API: OpenRouter, Together AI, Groq, Ollama, etc.
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">Reply Behavior</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  Tune how the AI writes and formats private Messenger responses.
                 </p>
               </div>
-            )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Allowed AI Keys
-              </label>
-              {savedKeys.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  No keys added yet. <a href="/dashboard/ai-keys" className="text-blue-500 hover:underline">Add keys →</a>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  AI Instructions
+                </label>
+                <textarea
+                  value={form.reply_instructions}
+                  onChange={e => setForm(f => ({ ...f, reply_instructions: e.target.value }))}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Describe the AI&apos;s persona and how it should respond in private messages. The commenter&apos;s original comment is automatically included as context.
                 </p>
-              ) : (
-                <div className="space-y-2">
-                  {savedKeys.map(k => (
-                    <label key={k.id} className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.preferred_ai_key_ids.includes(k.id)}
-                        onChange={e => setForm(f => ({
-                          ...f,
-                          preferred_ai_key_ids: e.target.checked
-                            ? [...f.preferred_ai_key_ids, k.id]
-                            : f.preferred_ai_key_ids.filter(id => id !== k.id),
-                        }))}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">
-                        {k.label}
-                        <span className="text-gray-400 ml-1">· {k.provider}{k.model ? ` / ${k.model}` : ''}</span>
-                        {k.health !== 'healthy' && <span className="ml-1 text-yellow-500 text-xs">⚠ {k.health}</span>}
-                      </span>
-                    </label>
-                  ))}
-                  {form.preferred_ai_key_ids.length === 0 && (
-                    <p className="text-xs text-gray-400 mt-1">None selected — all active keys used (by priority).</p>
-                  )}
+              </div>
+
+              <div className="grid sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Language</label>
+                  <select
+                    value={form.reply_language}
+                    onChange={e => setForm(f => ({ ...f, reply_language: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {LANGUAGES.map(l => (
+                      <option key={l.value} value={l.value}>{l.label}</option>
+                    ))}
+                  </select>
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* Reply Behavior */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">💬 Private Message Behavior</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Controls how the AI writes the private Messenger reply sent to each commenter.</p>
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tone</label>
+                  <select
+                    value={form.reply_tone}
+                    onChange={e => setForm(f => ({ ...f, reply_tone: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="friendly">Friendly</option>
+                    <option value="formal">Formal</option>
+                    <option value="casual">Casual</option>
+                    <option value="professional">Professional</option>
+                  </select>
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">AI Instructions</label>
-              <textarea
-                value={form.reply_instructions}
-                onChange={e => setForm(f => ({ ...f, reply_instructions: e.target.value }))}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Describe the AI&apos;s persona and how it should respond in private messages. The commenter&apos;s original comment is automatically included as context.
-              </p>
-            </div>
-
-            <div className="grid sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Language</label>
-                <select
-                  value={form.reply_language}
-                  onChange={e => setForm(f => ({ ...f, reply_language: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {LANGUAGES.map(l => (
-                    <option key={l.value} value={l.value}>{l.label}</option>
-                  ))}
-                </select>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Length</label>
+                  <select
+                    value={form.reply_length}
+                    onChange={e => setForm(f => ({ ...f, reply_length: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="short">Short (1-2 sentences)</option>
+                    <option value="medium">Medium (2-4 sentences)</option>
+                    <option value="long">Long (full paragraph)</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tone</label>
-                <select
-                  value={form.reply_tone}
-                  onChange={e => setForm(f => ({ ...f, reply_tone: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="friendly">Friendly</option>
-                  <option value="formal">Formal</option>
-                  <option value="casual">Casual</option>
-                  <option value="professional">Professional</option>
-                </select>
-              </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Reply Delay (seconds)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={3600}
+                    value={form.reply_delay_seconds}
+                    onChange={e => setForm(f => ({ ...f, reply_delay_seconds: parseInt(e.target.value) || 0 }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">0 = reply immediately. Adds human-like delay.</p>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Length</label>
-                <select
-                  value={form.reply_length}
-                  onChange={e => setForm(f => ({ ...f, reply_length: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="short">Short (1-2 sentences)</option>
-                  <option value="medium">Medium (2-4 sentences)</option>
-                  <option value="long">Long (full paragraph)</option>
-                </select>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Words to Avoid in Reply <span className="text-gray-400 font-normal">(comma-separated)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.reply_blacklist_words_raw}
+                    onChange={e => setForm(f => ({ ...f, reply_blacklist_words_raw: e.target.value }))}
+                    placeholder="discount, free, click here"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">AI is instructed to avoid these words in replies.</p>
+                </div>
               </div>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
+            {/* ── SECTION 3: Filters and Limits ──────────────────────── */}
+            <div className="p-6 space-y-6">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">Filters and Limits</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  Control which comments trigger automated responses and set safety thresholds.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Rate Limit (Max Replies / Hour)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={form.max_replies_per_hour}
+                    onChange={e => setForm(f => ({ ...f, max_replies_per_hour: parseInt(e.target.value) || 100 }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 pt-6">
+                  <input
+                    type="checkbox"
+                    id="own_posts"
+                    checked={form.reply_to_own_posts_only}
+                    onChange={e => setForm(f => ({ ...f, reply_to_own_posts_only: e.target.checked }))}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <label htmlFor="own_posts" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Only reply to comments on own posts
+                  </label>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Reply Delay (seconds)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={3600}
-                  value={form.reply_delay_seconds}
-                  onChange={e => setForm(f => ({ ...f, reply_delay_seconds: parseInt(e.target.value) || 0 }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">0 = reply immediately. Adds human-like delay.</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Words to Avoid in Reply <span className="text-gray-400 font-normal">(comma-separated)</span>
+                  Keyword Filter <span className="text-gray-400 font-normal">(comma-separated)</span>
                 </label>
                 <input
                   type="text"
-                  value={form.reply_blacklist_words_raw}
-                  onChange={e => setForm(f => ({ ...f, reply_blacklist_words_raw: e.target.value }))}
-                  placeholder="discount, free, click here"
+                  value={form.keyword_filter_raw}
+                  onChange={e => setForm(f => ({ ...f, keyword_filter_raw: e.target.value }))}
+                  placeholder="price, info, contact — only reply to comments containing these words"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-xs text-gray-500 mt-1">AI is instructed to avoid these words in replies.</p>
+                <p className="text-xs text-gray-500 mt-1">Leave blank to reply to all comments.</p>
               </div>
-            </div>
-          </div>
 
-          </TabsContent>
-
-          {/* ── TAB 2: Facebook Rules ──────────────────────────────────── */}
-          <TabsContent value="facebook" className="space-y-6 mt-0">
-
-          {/* Facebook Comment Behavior */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">💬 Facebook Comment Behavior</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Controls which Facebook comments trigger the agent — matching comments get a private Messenger reply.</p>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Max Replies / Hour
+                  Blacklisted Users <span className="text-gray-400 font-normal">(comma-separated Facebook IDs)</span>
                 </label>
                 <input
-                  type="number"
-                  min={1}
-                  max={1000}
-                  value={form.max_replies_per_hour}
-                  onChange={e => setForm(f => ({ ...f, max_replies_per_hour: parseInt(e.target.value) || 100 }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="text"
+                  value={form.blacklisted_user_ids_raw}
+                  onChange={e => setForm(f => ({ ...f, blacklisted_user_ids_raw: e.target.value }))}
+                  placeholder="123456789, 987654321"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-
-              <div className="flex items-center gap-3 pt-6">
-                <input
-                  type="checkbox"
-                  id="own_posts"
-                  checked={form.reply_to_own_posts_only}
-                  onChange={e => setForm(f => ({ ...f, reply_to_own_posts_only: e.target.checked }))}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <label htmlFor="own_posts" className="text-sm text-gray-700 dark:text-gray-300">
-                  Only reply to comments on my own posts
-                </label>
-              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Keyword Filter <span className="text-gray-400 font-normal">(comma-separated)</span>
-              </label>
-              <input
-                type="text"
-                value={form.keyword_filter_raw}
-                onChange={e => setForm(f => ({ ...f, keyword_filter_raw: e.target.value }))}
-                placeholder="price, info, contact — only reply to comments containing these words"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">Leave blank to reply to all comments.</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Blacklisted User IDs <span className="text-gray-400 font-normal">(comma-separated Facebook IDs)</span>
-              </label>
-              <input
-                type="text"
-                value={form.blacklisted_user_ids_raw}
-                onChange={e => setForm(f => ({ ...f, blacklisted_user_ids_raw: e.target.value }))}
-                placeholder="123456789, 987654321"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-
-          {/* Automation & Review */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">⚙️ Sending & Review</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Control when and how private messages are sent.</p>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-6">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.review_mode_enabled}
-                  onChange={e => setForm(f => ({ ...f, review_mode_enabled: e.target.checked }))}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Review before sending</span>
-                  <p className="text-xs text-gray-500 mt-0.5">AI drafts the private message but holds it — you review and approve before it reaches the commenter&apos;s Messenger</p>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.auto_retry_enabled}
-                  onChange={e => setForm(f => ({ ...f, auto_retry_enabled: e.target.checked }))}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Auto-retry on Failure</span>
-                  <p className="text-xs text-gray-500 mt-0.5">Retry if the private message fails to send before giving up</p>
-                </div>
-              </label>
-            </div>
-
-            {form.auto_retry_enabled && (
-              <div className="sm:w-1/3">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max Retry Attempts</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={form.max_retry_attempts}
-                  onChange={e => setForm(f => ({ ...f, max_retry_attempts: parseInt(e.target.value) || 3 }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                📵 Messaging Blocked — Public Fallback Reply
-              </label>
-              <input
-                type="text"
-                value={form.messaging_unavailable_reply}
-                onChange={e => setForm(f => ({ ...f, messaging_unavailable_reply: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Posted as a public comment when a user&apos;s privacy settings block private messages — instead of failing silently.
-              </p>
-            </div>
-          </div>
-
-          {/* Public Comment Reply */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">💬 Public Comment Reply</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">After sending the private Messenger message, also post a short visible reply on the public comment so the student knows to check their inbox.</p>
-            </div>
-
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.public_comment_reply_enabled}
-                onChange={e => setForm(f => ({ ...f, public_comment_reply_enabled: e.target.checked }))}
-                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
+            {/* ── SECTION 4: Review and Handoff ──────────────────────── */}
+            <div className="p-6 space-y-6">
               <div>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Public Comment Reply</span>
-                <p className="text-xs text-gray-500 mt-0.5">Post this text as a public reply on the Facebook comment after the private message is sent</p>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">Review and Handoff</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  Require manual review before sending or pass high-risk topics to human operators.
+                </p>
               </div>
-            </label>
 
-            {form.public_comment_reply_enabled && (
-              <div className="space-y-4">
-                {/* Mode selector */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Reply Mode</label>
-                  <div className="flex gap-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="pub_mode"
-                        value="static"
-                        checked={form.public_comment_reply_mode === 'static'}
-                        onChange={() => setForm(f => ({ ...f, public_comment_reply_mode: 'static' }))}
-                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Static text</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="pub_mode"
-                        value="ai"
-                        checked={form.public_comment_reply_mode === 'ai'}
-                        onChange={() => setForm(f => ({ ...f, public_comment_reply_mode: 'ai' }))}
-                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">AI-generated (short)</span>
-                    </label>
-                  </div>
-                </div>
-
-                {form.public_comment_reply_mode === 'static' ? (
+              <div className="grid sm:grid-cols-2 gap-6">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.review_mode_enabled}
+                    onChange={e => setForm(f => ({ ...f, review_mode_enabled: e.target.checked }))}
+                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply Text</label>
-                    <input
-                      type="text"
-                      value={form.public_comment_reply_text ?? ''}
-                      onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
-                      placeholder="تم إرسال التفاصيل برايفت 📩"
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      dir="rtl"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Same text is posted on every comment.</p>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Review Mode</span>
+                    <p className="text-xs text-gray-500 mt-0.5">AI drafts the message but holds it — review and approve before sending</p>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        AI Instructions for Public Reply
-                      </label>
-                      <textarea
-                        value={form.public_comment_ai_instructions}
-                        onChange={e => setForm(f => ({ ...f, public_comment_ai_instructions: e.target.value }))}
-                        rows={5}
-                        placeholder={`Write a very short public reply (1 sentence max). Do NOT mention prices, phone numbers, or private details — those go in the private message.\nExamples: "Sure! 😊" / "Check your inbox 📩" / "We'll reach out shortly"\nWrite the reply only — no explanation.`}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Leave blank to use the default instructions. The comment text is automatically passed to the AI as context.
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Fallback text <span className="text-gray-400 font-normal">(used if AI call fails)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={form.public_comment_reply_text ?? ''}
-                        onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
-                        placeholder="Details have been sent to your inbox 📩"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-                )}
+                </label>
 
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={form.public_comment_on_approval}
-                    onChange={e => setForm(f => ({ ...f, public_comment_on_approval: e.target.checked }))}
+                    checked={form.auto_retry_enabled}
+                    onChange={e => setForm(f => ({ ...f, auto_retry_enabled: e.target.checked }))}
                     className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   <div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Post when approving from Pending Handoffs</span>
-                    <p className="text-xs text-gray-500 mt-0.5">When Review mode is on, post this public comment at the same time you approve and send the private message — not before. Handoff approvals always use the static text.</p>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Auto-retry on Failure</span>
+                    <p className="text-xs text-gray-500 mt-0.5">Automatically retry if sending the private message fails</p>
                   </div>
                 </label>
               </div>
-            )}
-          </div>
 
-          </TabsContent>
+              {form.auto_retry_enabled && (
+                <div className="sm:w-1/3">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max Retry Attempts</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={form.max_retry_attempts}
+                    onChange={e => setForm(f => ({ ...f, max_retry_attempts: parseInt(e.target.value) || 3 }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
 
-          {/* ── TAB 3: Handoff ────────────────────────────────────────── */}
-          <TabsContent value="handoff" className="space-y-6 mt-0">
+              <div className="pt-2 border-t border-gray-100 dark:border-gray-800/60 space-y-4">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.human_handoff_enabled}
+                    onChange={e => setForm(f => ({ ...f, human_handoff_enabled: e.target.checked }))}
+                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Human Handoff</span>
+                    <p className="text-xs text-gray-500 mt-0.5">Skip AI for sensitive comments — you write the reply manually</p>
+                  </div>
+                </label>
 
-          {/* Human Handoff */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">🤝 Human Handoff</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Skip AI for sensitive comments — you write the private reply yourself.</p>
-            </div>
-
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.human_handoff_enabled}
-                onChange={e => setForm(f => ({ ...f, human_handoff_enabled: e.target.checked }))}
-                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <div>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Human Handoff</span>
-                <p className="text-xs text-gray-500 mt-0.5">Comments matching trigger keywords are held — no private message is sent until you write and approve one manually in the Pending Handoffs section below</p>
+                {form.human_handoff_enabled && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Trigger Keywords <span className="text-gray-400 font-normal">(comma-separated)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={form.human_handoff_keywords_raw}
+                      onChange={e => setForm(f => ({ ...f, human_handoff_keywords_raw: e.target.value }))}
+                      placeholder="complaint, refund, urgent, legal"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Comments containing these words skip AI and require manual intervention.</p>
+                  </div>
+                )}
               </div>
-            </label>
 
-            {form.human_handoff_enabled && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Trigger Keywords <span className="text-gray-400 font-normal">(comma-separated)</span>
+                  📵 Messaging Blocked — Public Fallback Reply
                 </label>
                 <input
                   type="text"
-                  value={form.human_handoff_keywords_raw}
-                  onChange={e => setForm(f => ({ ...f, human_handoff_keywords_raw: e.target.value }))}
-                  placeholder="complaint, refund, urgent, legal"
+                  value={form.messaging_unavailable_reply}
+                  onChange={e => setForm(f => ({ ...f, messaging_unavailable_reply: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-xs text-gray-500 mt-1">Any comment containing these words skips AI and waits for your manual private reply.</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Posted publicly when commenter privacy settings prevent direct private Messenger messages.
+                </p>
               </div>
-            )}
+            </div>
+
+            {/* ── SECTION 5: Public Comment Reply ────────────────────── */}
+            <div className="p-6 space-y-6">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">Public Comment Reply</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  Optionally post a public comment confirming a private Messenger reply was sent.
+                </p>
+              </div>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.public_comment_reply_enabled}
+                  onChange={e => setForm(f => ({ ...f, public_comment_reply_enabled: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Public Comment Reply</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Post a public comment notifying the user that details are in their inbox</p>
+                </div>
+              </label>
+
+              {form.public_comment_reply_enabled && (
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Reply Mode</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="pub_mode"
+                          value="static"
+                          checked={form.public_comment_reply_mode === 'static'}
+                          onChange={() => setForm(f => ({ ...f, public_comment_reply_mode: 'static' }))}
+                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Static text</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="pub_mode"
+                          value="ai"
+                          checked={form.public_comment_reply_mode === 'ai'}
+                          onChange={() => setForm(f => ({ ...f, public_comment_reply_mode: 'ai' }))}
+                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">AI-generated (short)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {form.public_comment_reply_mode === 'static' ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Static Reply Text</label>
+                      <input
+                        type="text"
+                        value={form.public_comment_reply_text ?? ''}
+                        onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
+                        placeholder="تم إرسال التفاصيل برايفت 📩"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        dir="rtl"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Same text is posted on every qualifying comment.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          AI Instructions for Public Reply
+                        </label>
+                        <textarea
+                          value={form.public_comment_ai_instructions}
+                          onChange={e => setForm(f => ({ ...f, public_comment_ai_instructions: e.target.value }))}
+                          rows={4}
+                          placeholder={`Write a very short public reply (1 sentence max). Do NOT mention prices, phone numbers, or private details — those go in the private message.\nExamples: "Sure! 😊" / "Check your inbox 📩" / "We'll reach out shortly"\nWrite the reply only — no explanation.`}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Leave blank to use the default instructions. The comment text is automatically passed to the AI as context.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Fallback text <span className="text-gray-400 font-normal">(used if AI call fails)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={form.public_comment_reply_text ?? ''}
+                          onChange={e => setForm(f => ({ ...f, public_comment_reply_text: e.target.value }))}
+                          placeholder="Details have been sent to your inbox 📩"
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.public_comment_on_approval}
+                      onChange={e => setForm(f => ({ ...f, public_comment_on_approval: e.target.checked }))}
+                      className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Post when approving from Pending Handoffs</span>
+                      <p className="text-xs text-gray-500 mt-0.5">When Review mode is on, post this public comment at the same time you approve and send the private message — not before. Handoff approvals always use the static text.</p>
+                    </div>
+                  </label>
+                </div>
+              )}
+            </div>
+
           </div>
 
-          {/* Test Reply */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+          {/* Test Reply Preview Card */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4 shadow-sm">
             <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">🧪 Test Private Message Preview</h2>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">🧪 Test Private Message Preview</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                 Simulate what private Messenger message the AI would send for a given comment — nothing is sent to Facebook.
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <input
                 type="text"
                 value={testComment}
@@ -799,17 +914,40 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
             )}
           </div>
 
-          </TabsContent>
-          </Tabs>
-
-          {/* Save Button — always visible outside tabs */}
-          <div className="flex justify-end">
+          {/* Save Button with feedback states */}
+          <div className="flex justify-end pt-2">
             <button
               type="submit"
-              disabled={saving}
-              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              disabled={saveStatus === 'saving'}
+              className={`inline-flex items-center justify-center gap-2 min-w-[140px] px-6 py-2.5 font-medium rounded-lg transition shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                saveStatus === 'saved'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500'
+                  : saveStatus === 'failed'
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white focus:ring-rose-500'
+                  : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white focus:ring-blue-500'
+              }`}
             >
-              {saving ? 'Saving...' : 'Save Settings'}
+              {saveStatus === 'saving' && (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              )}
+              {saveStatus === 'saved' && (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Saved!</span>
+                </>
+              )}
+              {saveStatus === 'failed' && (
+                <>
+                  <X className="w-4 h-4" />
+                  <span>Failed</span>
+                </>
+              )}
+              {saveStatus === 'idle' && (
+                <span>Save Settings</span>
+              )}
             </button>
           </div>
         </form>
@@ -817,3 +955,4 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     </div>
   )
 }
+
