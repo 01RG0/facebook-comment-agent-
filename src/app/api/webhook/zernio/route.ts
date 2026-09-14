@@ -37,6 +37,12 @@ export async function POST(req: NextRequest) {
   const eventHeader = req.headers.get('x-zernio-event')
   const eventType = payload.event || payload.type || payload.event_type || eventHeader || ''
 
+  // ── Handle Webhook Test Events ──
+  if (eventType === 'webhook.test') {
+    logger.info({ payload }, 'Zernio test webhook received')
+    return NextResponse.json({ ok: true, message: 'Test webhook received' }, { status: 200 })
+  }
+
   // ── Handle Messenger Direct Message (DM) Events ──
   const isMessageEvent =
     eventType === 'message' ||
@@ -45,7 +51,12 @@ export async function POST(req: NextRequest) {
     eventType.startsWith('message') ||
     !!payload.message
 
-  // If this is a message event and not a comment event
+  // Ignore outbound message confirmations (e.g. message.sent) to prevent loop/error
+  if (eventType === 'message.sent' || payload.message?.direction === 'outgoing') {
+    return NextResponse.json({ ok: true, ignored: 'outgoing_message' }, { status: 200 })
+  }
+
+  // If this is an inbound message event and not a comment event
   if (isMessageEvent && eventType !== 'comment.received' && !payload.comment) {
     // 1. Extract: sender_id (from.id), sender_name (from.name), page's fb_page_id or zernio account, message text, fb_message_id
     const msgObj = typeof payload.message === 'object' && payload.message !== null ? payload.message : {}
@@ -127,7 +138,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
 
-    // 4. Insert messenger_messages: { thread_id, fb_message_id, direction: 'inbound', text: message_text, sent_at: new Date().toISOString() }
+    // 4. Insert messenger_messages: ignore duplicates on fb_message_id
+    let insertedMsgId: string | undefined = undefined
+    if (fbMessageId) {
+      const { data: existingMsg } = await db
+        .from('messenger_messages')
+        .select('id')
+        .eq('fb_message_id', String(fbMessageId))
+        .maybeSingle()
+
+      if (existingMsg) {
+        logger.info({ fbMessageId }, 'Messenger message already processed, skipping')
+        return NextResponse.json({ ok: true, duplicate: true }, { status: 200 })
+      }
+    }
+
     const { data: insertedMsg, error: msgErr } = await db
       .from('messenger_messages')
       .insert({
@@ -141,9 +166,14 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (msgErr) {
+      if (msgErr.code === '23505') {
+        // Unique violation — already processed
+        return NextResponse.json({ ok: true, duplicate: true }, { status: 200 })
+      }
       logger.error({ err: msgErr.message, threadId: thread.id }, 'Failed to insert messenger_messages')
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
+    insertedMsgId = insertedMsg?.id
 
     // 5. If page.agent_enabled: enqueue job 'process-dm' with { threadId, pageId, senderId, senderName, message: text }
     if (page.agent_enabled) {
