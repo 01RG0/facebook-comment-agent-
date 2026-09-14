@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
   const db = getAdminClient()
   const { data: page, error: pageErr } = await db
     .from('pages')
-    .select('id, agent_enabled, fb_page_id')
+    .select('id, user_id, agent_enabled, fb_page_id')
     .eq('zernio_account_id', payload.account.id)
     .maybeSingle()
 
@@ -255,6 +255,40 @@ export async function POST(req: NextRequest) {
       }
     )
     logger.info({ jobId: job.id, commentId: payload.comment.id, pageId: page.id }, 'Comment job enqueued')
+
+    // Auto-save commenter as a contact (fire-and-forget, never block webhook response)
+    try {
+      const fromId = payload.comment?.from?.id || payload.comment?.author?.id || payload.from?.id
+      const fromName = payload.comment?.from?.name || payload.comment?.author?.name || payload.from?.name || null
+      const fromPicture = payload.comment?.from?.picture || payload.comment?.author?.picture || payload.from?.picture || null
+      const accountId = payload.account?.id || payload.accountId
+
+      const { data: pageRow } = await db
+        .from('pages')
+        .select('id, user_id')
+        .eq('zernio_account_id', accountId)
+        .maybeSingle()
+
+      if (pageRow && fromId) {
+        await db.from('contacts').upsert({
+          user_id: pageRow.user_id,
+          page_id: pageRow.id,
+          platform_user_id: String(fromId),
+          platform: 'facebook',
+          name: fromName || null,
+          picture: fromPicture || null,
+          last_seen_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,platform_user_id,platform' })
+
+        await (db as any).rpc('increment_contact_count', {
+          p_user_id: pageRow.user_id,
+          p_platform_user_id: String(fromId),
+          p_platform: 'facebook',
+        }).catch(() => {})
+      }
+    } catch (contactErr) {
+      logger.warn({ err: (contactErr as Error).message }, 'Failed to upsert contact (non-critical)')
+    }
   } catch (queueErr) {
     logger.error({ err: (queueErr as Error).message, commentId: payload.comment.id }, 'Failed to enqueue comment job')
     return NextResponse.json({ error: 'Queue error' }, { status: 500 })

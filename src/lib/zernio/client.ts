@@ -47,10 +47,21 @@ export async function getConnectUrl(
 }
 
 export async function disconnectAccount(accountId: string): Promise<void> {
-  await zernioFetch(`/accounts/${accountId}`, {
-    method: 'PUT',
-    body: JSON.stringify({ isActive: false }),
-  })
+  try {
+    await zernioFetch(`/accounts/${accountId}`, {
+      method: 'DELETE',
+    })
+  } catch (deleteErr) {
+    // Fallback: try disabling active status via PUT if DELETE is not supported
+    try {
+      await zernioFetch(`/accounts/${accountId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ isActive: false }),
+      })
+    } catch {
+      throw deleteErr
+    }
+  }
 }
 
 export async function sendZernioPrivateReply(

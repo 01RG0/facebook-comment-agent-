@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getZernioPosts, getZernioPostComments } from '@/lib/zernio/client'
 import { logger } from '@/lib/logger'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const supabase = createClient()
