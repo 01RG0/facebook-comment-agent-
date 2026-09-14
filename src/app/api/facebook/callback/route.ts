@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
     if (existing) {
       const { data: updated, error: updateErr } = await db
         .from('pages')
-        .update({ page_name: pageName, zernio_profile_id: zernioProfileId })
+        .update({ page_name: pageName, zernio_profile_id: zernioProfileId, webhook_subscribed: true })
         .eq('id', existing.id)
         .select('id')
         .single()
@@ -87,6 +87,7 @@ export async function GET(req: NextRequest) {
           fb_page_id: `zernio:${accountId}`,
           zernio_account_id: accountId,
           zernio_profile_id: zernioProfileId,
+          webhook_subscribed: true,
           // Deprecated columns kept for schema compat — Zernio manages tokens now
           access_token_enc: 'zernio',
           access_token_iv: 'zernio',
