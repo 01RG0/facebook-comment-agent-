@@ -58,16 +58,22 @@ export async function POST(req: NextRequest) {
 
   // If this is an inbound message event and not a comment event
   if (isMessageEvent && eventType !== 'comment.received' && !payload.comment) {
-    // 1. Extract: sender_id (from.id), sender_name (from.name), page's fb_page_id or zernio account, message text, fb_message_id
+    // 1. Extract: sender_id (customer participantId), sender_name, page's fb_page_id or zernio account, message text, fb_message_id
     const msgObj = typeof payload.message === 'object' && payload.message !== null ? payload.message : {}
+    const convObj = typeof payload.conversation === 'object' && payload.conversation !== null ? payload.conversation : {}
     const fromObj = payload.from || msgObj.from || msgObj.sender || payload.sender || {}
-    const senderId = String(fromObj.id || msgObj.sender_id || msgObj.senderId || payload.sender_id || payload.senderId || '')
-    const senderName = fromObj.name || msgObj.sender_name || msgObj.senderName || fromObj.username || ''
+    const accountId = payload.account?.id || payload.accountId || payload.zernio_account_id || msgObj.accountId || ''
+
+    // For conversation threads, senderId must be the customer (participantId), not the page/account ID
+    let senderId = String(convObj.participantId || convObj.id || fromObj.id || msgObj.sender_id || msgObj.senderId || payload.sender_id || '')
+    if (senderId === accountId && convObj.participantId) {
+      senderId = String(convObj.participantId)
+    }
+
+    const senderName = convObj.participantName || fromObj.name || msgObj.sender_name || msgObj.senderName || fromObj.username || 'Facebook User'
     const messageText = typeof payload.message === 'string'
       ? payload.message
       : (msgObj.text ?? msgObj.message ?? payload.text ?? '')
-    const fbMessageId = msgObj.id || msgObj.fb_message_id || msgObj.message_id || payload.fb_message_id || payload.message_id || payload.id || null
-    const accountId = payload.account?.id || payload.accountId || payload.zernio_account_id || msgObj.accountId || ''
 
     logger.info(
       { event: eventType, senderId, senderName, accountId, fbMessageId },
