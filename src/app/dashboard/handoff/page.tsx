@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { friendlyError } from '@/lib/friendly-errors'
 
 interface HandoffItem {
   id: string
@@ -78,7 +79,7 @@ export default function HandoffPage() {
       setReplyText('')
       await load()
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setSending(false)
     }
@@ -86,7 +87,7 @@ export default function HandoffPage() {
 
   const handleDismiss = async (id: string) => {
     const res = await fetch('/api/handoff/' + id + '/reply', { method: 'DELETE' })
-    if (!res.ok) { toast.error('Failed to dismiss'); return }
+    if (!res.ok) { toast.error('Could not dismiss this item. Please try again.'); return }
     setItems(prev => prev.filter(i => i.id !== id))
   }
 

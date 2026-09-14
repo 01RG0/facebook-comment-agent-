@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { friendlyError } from '@/lib/friendly-errors'
 
 type Mode = 'login' | 'signup' | 'reset'
 
@@ -24,7 +25,7 @@ export default function LoginForm() {
         redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
       })
       setLoading(false)
-      if (error) toast.error(error.message)
+      if (error) toast.error(friendlyError(error))
       else setResetSent(true)
       return
     }
@@ -36,7 +37,7 @@ export default function LoginForm() {
         options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
       })
       setLoading(false)
-      if (error) { toast.error(error.message); return }
+      if (error) { toast.error(friendlyError(error)); return }
       // Email confirmation disabled → session exists immediately, redirect now
       if (data.session) { window.location.href = '/dashboard'; return }
       // Email confirmation enabled → user must verify first
@@ -47,7 +48,7 @@ export default function LoginForm() {
     // login
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     setLoading(false)
-    if (error) toast.error(error.message)
+    if (error) toast.error(friendlyError(error))
     else window.location.href = '/dashboard'
   }
 

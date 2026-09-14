@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import { friendlyError } from '@/lib/friendly-errors'
 import Image from 'next/image'
 import JSZip from 'jszip'
 
@@ -94,7 +95,7 @@ export default function KnowledgeBasePanel({ pageId }: Props) {
       if (fileRef.current) fileRef.current.value = ''
       toast.success('Image uploaded to knowledge base')
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setUploading(false)
     }
@@ -130,7 +131,7 @@ export default function KnowledgeBasePanel({ pageId }: Props) {
         // Find the file in the zip (search by filename, ignoring folder prefix)
         const entry = zip.file(item.file) ?? zip.file(new RegExp(`(^|/)${item.file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`))[0]
         if (!entry) {
-          toast.error(`File not found in ZIP: ${item.file}`)
+          toast.error('Could not find a required file in the ZIP. Check your file and try again.')
           failed++
           continue
         }
@@ -151,7 +152,7 @@ export default function KnowledgeBasePanel({ pageId }: Props) {
           )
           if (asset) added.push(asset)
         } catch (err) {
-          toast.error(`Failed to upload ${item.label}: ${(err as Error).message}`)
+          toast.error(`Failed to upload ${item.label}: ${friendlyError(err)}`)
           failed++
         }
       }
@@ -165,7 +166,7 @@ export default function KnowledgeBasePanel({ pageId }: Props) {
         toast.warning(`${added.length} imported, ${failed} failed from ${name}`)
       }
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setImporting(false)
       setImportProgress(null)
@@ -199,7 +200,7 @@ export default function KnowledgeBasePanel({ pageId }: Props) {
       setEditingId(null)
       toast.success('Saved')
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setSavingId(null)
     }
@@ -212,7 +213,7 @@ export default function KnowledgeBasePanel({ pageId }: Props) {
       setAssets(a => a.filter(x => x.id !== id))
       toast.success('Removed from knowledge base')
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     }
   }
 

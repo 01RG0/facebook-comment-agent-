@@ -9,10 +9,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const [profileResult, teamMemberResult] = await Promise.all([
     supabase.from('profiles').select('full_name, email, avatar_url, is_admin').eq('id', user.id).single(),
-    supabase.from('team_members').select('id', { count: 'exact', head: true }).eq('member_id', user.id),
+    supabase.from('team_members').select('id, role').eq('member_id', user.id),
   ])
 
-  const isTeamMember = (teamMemberResult.count ?? 0) > 0
+  const teamMemberships = teamMemberResult.data ?? []
+  const isTeamMember = teamMemberships.length > 0
+  const hasEditorOrReviewerRole = teamMemberships.some((m: { role?: string | null }) =>
+    m.role === 'editor' || m.role === 'reviewer'
+  )
+  const canAccessInbox = !isTeamMember || hasEditorOrReviewerRole
   const isAdmin = profileResult.data?.is_admin === true
 
   return (
@@ -21,6 +26,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         user={profileResult.data ?? { email: user.email ?? '', full_name: null, avatar_url: null }}
         isTeamMember={isTeamMember}
         isAdmin={isAdmin}
+        canAccessInbox={canAccessInbox}
       />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}

@@ -24,7 +24,7 @@ export async function GET(
 
   const { data } = await supabase
     .from('team_members')
-    .select('id, member_email, role, invited_at, accepted_at')
+    .select('id, member_email, display_name, role, invited_at, accepted_at')
     .eq('page_id', params.pageId)
     .order('invited_at', { ascending: false })
 
@@ -42,7 +42,7 @@ export async function POST(
   const page = await getAuthorizedPage(supabase, params.pageId, user.id)
   if (!page) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { member_email, role } = await req.json()
+  const { member_email, role, display_name } = await req.json()
   if (!member_email) return NextResponse.json({ error: 'member_email required' }, { status: 400 })
   if (!['viewer', 'editor', 'reviewer'].includes(role ?? 'reviewer')) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
@@ -50,8 +50,8 @@ export async function POST(
 
   const { data, error } = await supabase
     .from('team_members')
-    .insert({ page_id: params.pageId, owner_id: user.id, member_email, role: role ?? 'reviewer' })
-    .select('id, member_email, role, invited_at, accepted_at')
+    .insert({ page_id: params.pageId, owner_id: user.id, member_email, role: role ?? 'reviewer', display_name: display_name?.trim() || null })
+    .select('id, member_email, display_name, role, invited_at, accepted_at')
     .single()
 
   if (error) {

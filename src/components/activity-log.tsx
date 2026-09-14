@@ -4,6 +4,8 @@ import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import useSWR from 'swr'
 import { formatDistanceToNow, format } from 'date-fns'
+import { toast } from 'sonner'
+import { friendlyError } from '@/lib/friendly-errors'
 
 interface Page { id: string; page_name: string; fb_page_id: string }
 
@@ -70,12 +72,12 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
       const res = await fetch(`/api/comments/${id}/retry`, { method: 'POST' })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
-        alert(json.error || 'Failed to retry comment')
+        toast.error(json.error ? friendlyError(json.error) : 'Could not retry this comment. Please try again.')
       } else {
         await mutate()
       }
     } catch (err) {
-      alert((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setRetryingId(null)
     }
@@ -195,7 +197,15 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
                     {log.error_message && (
                       <div>
                         <p className="text-xs font-medium text-red-500 uppercase tracking-wide mb-1">Error</p>
-                        <p className="text-red-600 dark:text-red-400 font-mono text-xs">{log.error_message}</p>
+                        <p className="text-red-600 dark:text-red-400 text-xs">The AI could not process this comment.</p>
+                        <details className="mt-1">
+                          <summary className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer hover:underline">
+                            Technical details
+                          </summary>
+                          <p className="text-red-600 dark:text-red-400 font-mono text-xs mt-1 bg-red-50 dark:bg-red-900/20 p-2 rounded">
+                            {log.error_message}
+                          </p>
+                        </details>
                       </div>
                     )}
                   </div>

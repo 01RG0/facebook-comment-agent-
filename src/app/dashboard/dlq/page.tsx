@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { friendlyError } from '@/lib/friendly-errors'
 
 interface DLQItem {
   id: string
@@ -100,7 +101,7 @@ export default function DLQPage() {
       toast.success('Re-enqueued for retry')
       await load()
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setRetrying(null)
     }
@@ -118,7 +119,7 @@ export default function DLQPage() {
       toast.success('Marked as resolved')
       await load()
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setResolving(null)
     }
@@ -175,7 +176,13 @@ export default function DLQPage() {
                   </div>
                   <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 truncate">{item.comment_text}</p>
                   {item.last_error && (
-                    <p className="text-xs text-red-500 dark:text-red-400 mt-1 font-mono truncate">{item.last_error}</p>
+                    <div className="mt-1">
+                      <p className="text-xs text-red-500 dark:text-red-400">Processing failed - click Retry to try again.</p>
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs text-muted-foreground hover:underline">Technical details</summary>
+                        <p className="text-xs text-muted-foreground mt-1 font-mono break-all">{item.last_error}</p>
+                      </details>
+                    </div>
                   )}
                   <p className="text-xs text-gray-400 mt-1">{new Date(item.created_at).toLocaleString()}</p>
                 </div>

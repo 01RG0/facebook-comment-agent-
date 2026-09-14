@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
+import { friendlyError } from '@/lib/friendly-errors'
 
 interface Page { id: string; page_name: string }
 
@@ -133,7 +134,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
       setDetectedModels(data.models ?? [])
       if (data.models?.length === 0) toast.info('No models found for this provider')
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setDetectingModels(false)
     }
@@ -190,7 +191,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
       toast.success('Settings saved')
       router.refresh()
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setSaving(false)
     }
@@ -210,7 +211,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
       if (!res.ok) throw new Error(data.error)
       setTestResult(data)
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setTesting(false)
     }

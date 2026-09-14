@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -10,11 +11,20 @@ interface Props {
   user: { full_name: string | null; email: string; avatar_url: string | null }
   isTeamMember?: boolean
   isAdmin?: boolean
+  canAccessInbox?: boolean
 }
 
-const ownerLinks = [
+interface NavLink {
+  href: string
+  label: string
+  icon: string
+  hasBadge?: boolean
+}
+
+const ownerLinks: NavLink[] = [
   { href: '/dashboard', label: 'Pages', icon: '📄' },
   { href: '/dashboard/activity', label: 'Activity', icon: '📊' },
+  { href: '/dashboard/inbox', label: 'Inbox', icon: '📥', hasBadge: true },
   { href: '/dashboard/handoff', label: 'Handoff', icon: '🤝' },
   { href: '/dashboard/analytics', label: 'Analytics', icon: '📈' },
   { href: '/dashboard/dlq', label: 'Failed', icon: '⚠️' },
@@ -22,14 +32,42 @@ const ownerLinks = [
   { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
 ]
 
-const memberLinks = [
+const memberLinks: NavLink[] = [
   { href: '/dashboard/handoff', label: 'Handoff', icon: '🤝' },
 ]
 
-export default function DashboardNav({ user, isTeamMember = false, isAdmin = false }: Props) {
-  const navLinks = isTeamMember ? memberLinks : ownerLinks
+export default function DashboardNav({ user, isTeamMember = false, isAdmin = false, canAccessInbox = true }: Props) {
+  const [unreadCount, setUnreadCount] = useState<number | null>(null)
   const pathname = usePathname()
   const router = useRouter()
+
+  useEffect(() => {
+    if (!canAccessInbox) return
+
+    fetch('/api/inbox/threads?status=open&limit=1')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!data) return
+        if (typeof data.count === 'number') {
+          setUnreadCount(data.count)
+        } else if (typeof data.total === 'number') {
+          setUnreadCount(data.total)
+        } else if (Array.isArray(data)) {
+          setUnreadCount(data.length)
+        }
+      })
+      .catch(() => {})
+  }, [canAccessInbox])
+
+  let navLinks = isTeamMember
+    ? canAccessInbox
+      ? [...memberLinks, { href: '/dashboard/inbox', label: 'Inbox', icon: '📥', hasBadge: true }]
+      : memberLinks
+    : ownerLinks
+
+  if (!canAccessInbox) {
+    navLinks = navLinks.filter(link => link.href !== '/dashboard/inbox')
+  }
 
   const handleSignOut = async () => {
     const supabase = createClient()
@@ -70,6 +108,11 @@ export default function DashboardNav({ user, isTeamMember = false, isAdmin = fal
               >
                 <span>{link.icon}</span>
                 <span className="hidden sm:block">{link.label}</span>
+                {link.hasBadge && unreadCount !== null && unreadCount > 0 && (
+                  <span className="ml-1.5 px-1.5 py-0.5 text-xs font-semibold bg-blue-600 text-white rounded-full leading-none">
+                    {unreadCount}
+                  </span>
+                )}
               </Link>
             ))}
             {isAdmin && (

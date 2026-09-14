@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
+import { friendlyError } from '@/lib/friendly-errors'
 
 interface Member {
   id: string
   member_email: string
+  display_name?: string | null
   role: 'viewer' | 'editor' | 'reviewer'
   invited_at: string
   accepted_at: string | null
@@ -19,6 +21,7 @@ export default function TeamMembersPanel({ pageId }: Props) {
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [role, setRole] = useState<'viewer' | 'editor' | 'reviewer'>('reviewer')
   const [inviting, setInviting] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
@@ -39,14 +42,19 @@ export default function TeamMembersPanel({ pageId }: Props) {
       const res = await fetch(`/api/pages/${pageId}/team`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ member_email: email.trim(), role }),
+        body: JSON.stringify({
+          member_email: email.trim(),
+          role,
+          display_name: displayName.trim() || undefined,
+        }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
       toast.success('Team member invited')
       setEmail('')
+      setDisplayName('')
       await load()
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setInviting(false)
     }
@@ -64,7 +72,7 @@ export default function TeamMembersPanel({ pageId }: Props) {
       toast.success('Member removed')
       await load()
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(friendlyError(err))
     } finally {
       setRemoving(null)
     }
@@ -92,6 +100,13 @@ export default function TeamMembersPanel({ pageId }: Props) {
       </div>
 
       <form onSubmit={handleInvite} className="flex gap-3 flex-wrap">
+        <input
+          type="text"
+          value={displayName}
+          onChange={e => setDisplayName(e.target.value)}
+          placeholder="Display Name (optional)"
+          className="flex-1 min-w-[160px] px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
         <input
           type="email"
           value={email}
@@ -127,7 +142,9 @@ export default function TeamMembersPanel({ pageId }: Props) {
           {members.map(m => (
             <div key={m.id} className="flex items-center justify-between py-3">
               <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{m.member_email}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  {m.display_name ? `${m.display_name} (${m.member_email})` : m.member_email}
+                </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium mr-1 ${
                     m.role === 'reviewer' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :

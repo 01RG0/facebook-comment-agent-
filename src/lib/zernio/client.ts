@@ -72,6 +72,10 @@ export async function sendZernioPrivateReply(
   return res.json()
 }
 
+// Alias for inbox message send compatibility
+export const sendPrivateReply = sendZernioPrivateReply
+
+
 export async function sendZernioPublicReply(
   platformPostId: string,
   commentId: string,
@@ -134,6 +138,17 @@ export async function sendZernioImageInConversation(
   } catch {
     return false
   }
+}
+
+export async function sendZernioDirectMessage(
+  accountId: string,
+  recipientFbUserId: string,
+  message: string
+): Promise<void> {
+  await zernioFetch('/inbox/messages', {
+    method: 'POST',
+    body: JSON.stringify({ accountId, recipientId: recipientFbUserId, message, platform: 'facebook' }),
+  })
 }
 
 export async function createZernioWebhook(

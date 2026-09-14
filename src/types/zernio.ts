@@ -46,3 +46,18 @@ export interface CommentJobPayload {
   message: string
   createdTime: number
 }
+
+export interface DmJobPayload {
+  pageId: string
+  fbPageId: string
+  zernioAccountId: string
+  threadId: string
+  messageId: string
+  fbMessageId: string
+  senderId: string
+  senderName: string
+  senderAvatar: string | null
+  message: string
+  createdTime: number
+}
+

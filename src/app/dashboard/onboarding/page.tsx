@@ -72,7 +72,7 @@ export default function OnboardingPage() {
     if (res.ok) {
       setStep(2)
     } else {
-      toast.error('Failed to save settings')
+      toast.error('Could not save your settings. Please try again.')
     }
   }
 
@@ -88,7 +88,7 @@ export default function OnboardingPage() {
     if (res.ok) {
       setDone(true)
     } else {
-      toast.error('Failed to enable agent')
+      toast.error('Could not enable the agent. Please try again.')
     }
   }
 

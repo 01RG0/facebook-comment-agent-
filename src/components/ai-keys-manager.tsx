@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
+import { friendlyError } from '@/lib/friendly-errors'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
@@ -125,7 +126,7 @@ export default function AiKeysManager() {
       toast.success(`Key works — ${data.models?.length ?? 0} model(s) available`)
     } catch (e) {
       setTestStatus(s => ({ ...s, [keyId]: 'error' }))
-      toast.error(`Key failed: ${(e as Error).message}`)
+      toast.error(`Key failed: ${friendlyError(e)}`)
     } finally {
       setTestingId(null)
     }
@@ -137,7 +138,7 @@ export default function AiKeysManager() {
       const data = await res.json() as AiKey[]
       setKeys(data)
     } catch {
-      toast.error('Failed to load keys')
+      toast.error('Could not load your API keys. Please refresh the page.')
     } finally {
       setLoading(false)
     }
@@ -170,8 +171,8 @@ export default function AiKeysManager() {
   }
 
   const handleSave = async () => {
-    if (!form.label || !form.provider) { toast.error('Label and provider are required'); return }
-    if (!editKey && !form.api_key) { toast.error('API key is required'); return }
+    if (!form.label || !form.provider) { toast.error('Please enter a name and select a provider.'); return }
+    if (!editKey && !form.api_key) { toast.error('Please enter your API key.'); return }
 
     setSaving(true)
     try {
@@ -195,7 +196,7 @@ export default function AiKeysManager() {
       setShowDialog(false)
       void load()
     } catch (e) {
-      toast.error((e as Error).message)
+      toast.error(friendlyError(e))
     } finally {
       setSaving(false)
     }
@@ -205,7 +206,7 @@ export default function AiKeysManager() {
     if (!confirm('Delete this API key?')) return
     const res = await fetch(`/api/ai-keys/${id}`, { method: 'DELETE' })
     if (res.ok) { toast.success('Key deleted'); void load() }
-    else toast.error('Failed to delete key')
+    else toast.error('Could not delete this key. Please try again.')
   }
 
   const handlePriority = async (id: string, direction: 'up' | 'down') => {
@@ -217,7 +218,7 @@ export default function AiKeysManager() {
   }
 
   const handleDetectModels = async () => {
-    if (!editKey) { toast.error('Save the key first, then detect models'); return }
+    if (!editKey) { toast.error('Please save the key before detecting models.'); return }
     setDetectingModels(true)
     try {
       const res = await fetch(`/api/ai-keys/${editKey.id}/detect-models`, { method: 'POST' })
@@ -226,7 +227,7 @@ export default function AiKeysManager() {
       setDetectedModels(data.models ?? [])
       if (!data.models?.length) toast.info('No models returned')
     } catch (e) {
-      toast.error((e as Error).message)
+      toast.error(friendlyError(e))
     } finally {
       setDetectingModels(false)
     }
