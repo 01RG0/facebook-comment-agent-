@@ -30,14 +30,17 @@ export default function LoginForm() {
     }
 
     if (mode === 'signup') {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
       })
       setLoading(false)
-      if (error) toast.error(error.message)
-      else toast.success('Account created! Check your email to confirm.')
+      if (error) { toast.error(error.message); return }
+      // Email confirmation disabled → session exists immediately, redirect now
+      if (data.session) { window.location.href = '/dashboard'; return }
+      // Email confirmation enabled → user must verify first
+      toast.success('Account created! Check your email to confirm.')
       return
     }
 
