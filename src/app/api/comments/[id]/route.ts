@@ -5,6 +5,8 @@ import {
   sendZernioDirectMessage,
   hideZernioComment,
   unhideZernioComment,
+  likeZernioComment,
+  unlikeZernioComment,
   deleteZernioComment,
 } from '@/lib/zernio/client'
 import { logger } from '@/lib/logger'
@@ -84,6 +86,20 @@ export async function POST(
           return NextResponse.json({ error: 'platformPostId required for unhide' }, { status: 400 })
         }
         await unhideZernioComment(platformPostId, id, accountId)
+        break
+      }
+      case 'like': {
+        if (!platformPostId) {
+          return NextResponse.json({ error: 'platformPostId required for like' }, { status: 400 })
+        }
+        await likeZernioComment(platformPostId, id, accountId)
+        break
+      }
+      case 'unlike': {
+        if (!platformPostId) {
+          return NextResponse.json({ error: 'platformPostId required for unlike' }, { status: 400 })
+        }
+        await unlikeZernioComment(platformPostId, id, accountId)
         break
       }
       case 'delete': {

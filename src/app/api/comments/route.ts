@@ -41,9 +41,11 @@ export async function GET(req: NextRequest) {
         isOwner: c.from?.isOwner ?? false,
         createdTime: c.createdTime ?? c.created_time,
         isHidden: c.isHidden ?? false,
+        isLiked: c.isLiked ?? false,
         canReply: c.canReply ?? true,
         canDelete: c.canDelete ?? false,
         canHide: c.canHide ?? true,
+        canLike: c.canLike ?? true,
         platform: c.platform ?? 'facebook',
       }))
 

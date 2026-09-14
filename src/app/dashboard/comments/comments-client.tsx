@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   MessageSquare, RefreshCw, ChevronLeft, Reply,
-  Mail, EyeOff, Eye, Trash2, Send, Search, Loader2,
+  Mail, EyeOff, Eye, Trash2, Send, Search, Loader2, Heart,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -31,9 +31,11 @@ interface Comment {
   isOwner: boolean
   createdTime: string
   isHidden: boolean
+  isLiked: boolean
   canReply: boolean
   canDelete: boolean
   canHide: boolean
+  canLike: boolean
 }
 
 const COLORS = ['bg-violet-500','bg-blue-500','bg-emerald-500','bg-orange-500','bg-rose-500','bg-indigo-500']
@@ -141,6 +143,20 @@ export default function CommentsClient() {
       toast.success('Comment hidden')
       setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: true } : c))
     } catch (err: any) { toast.error(err?.message || 'Failed to hide') }
+  }
+
+  const toggleLike = async (comment: Comment) => {
+    if (!selectedPost) return
+    const action = comment.isLiked ? 'unlike' : 'like'
+    try {
+      const res = await fetch(`/api/comments/${encodeURIComponent(comment.id)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, platformPostId: selectedPost.id, accountId: selectedPost.zernio_account_id }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error)
+      setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isLiked: !c.isLiked } : c))
+    } catch (err: any) { toast.error(err?.message || `Failed to ${action}`) }
   }
 
   const unhideComment = async (comment: Comment) => {
@@ -373,6 +389,15 @@ export default function CommentsClient() {
                           >
                             <Mail className="w-3.5 h-3.5" /><span className="hidden sm:inline">DM</span>
                           </button>
+                          {comment.canLike && (
+                            <button
+                              onClick={() => toggleLike(comment)}
+                              className={cn('flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border transition', comment.isLiked ? 'bg-rose-50 border-rose-300 text-rose-600 dark:bg-rose-950/40 dark:border-rose-700 dark:text-rose-400' : 'border-gray-200 text-gray-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-500 dark:border-gray-700 dark:text-gray-400')}
+                            >
+                              <Heart className={cn('w-3.5 h-3.5', comment.isLiked && 'fill-current')} />
+                              <span className="hidden sm:inline">{comment.isLiked ? 'Liked' : 'Like'}</span>
+                            </button>
+                          )}
                           {comment.canHide && !comment.isHidden && (
                             <button
                               onClick={() => hideComment(comment)}

@@ -217,6 +217,20 @@ export async function unhideZernioComment(platformPostId: string, commentId: str
   })
 }
 
+export async function likeZernioComment(platformPostId: string, commentId: string, accountId: string): Promise<void> {
+  await zernioFetch(`/inbox/comments/${encodeURIComponent(platformPostId)}/${encodeURIComponent(commentId)}/like`, {
+    method: 'POST',
+    body: JSON.stringify({ accountId }),
+  })
+}
+
+export async function unlikeZernioComment(platformPostId: string, commentId: string, accountId: string): Promise<void> {
+  const params = new URLSearchParams({ accountId })
+  await zernioFetch(`/inbox/comments/${encodeURIComponent(platformPostId)}/${encodeURIComponent(commentId)}/like?${params}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function deleteZernioComment(platformPostId: string, commentId: string, accountId: string): Promise<void> {
   const params = new URLSearchParams({ accountId, commentId })
   await zernioFetch(`/inbox/comments/${encodeURIComponent(platformPostId)}?${params}`, {
