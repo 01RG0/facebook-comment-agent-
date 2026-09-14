@@ -16,6 +16,11 @@ interface HandoffItem {
   pages: { page_name: string } | null
 }
 
+interface PageItem {
+  id: string
+  page_name: string
+}
+
 export default function HandoffPage() {
   const [items, setItems] = useState<HandoffItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -23,6 +28,17 @@ export default function HandoffPage() {
   const [replyText, setReplyText] = useState('')
   const [sending, setSending] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'pending' | 'all'>('pending')
+  const [pages, setPages] = useState<PageItem[]>([])
+  const [selectedPageId, setSelectedPageId] = useState('')
+
+  useEffect(() => {
+    fetch('/api/pages')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setPages(data)
+      })
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -33,11 +49,12 @@ export default function HandoffPage() {
       .limit(50)
 
     if (statusFilter === 'pending') q.eq('status', 'pending')
+    if (selectedPageId) q.eq('page_id', selectedPageId)
 
     const { data } = await q
     setItems((data ?? []) as unknown as HandoffItem[])
     setLoading(false)
-  }, [statusFilter])
+  }, [statusFilter, selectedPageId])
 
   useEffect(() => { load() }, [load])
 
@@ -68,15 +85,9 @@ export default function HandoffPage() {
   }
 
   const handleDismiss = async (id: string) => {
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.from('handoff_queue').update({ status: 'dismissed' }).eq('id', id)
-      if (error) throw error
-      toast.success('Dismissed')
-      await load()
-    } catch (err) {
-      toast.error((err as Error).message)
-    }
+    const res = await fetch('/api/handoff/' + id + '/reply', { method: 'DELETE' })
+    if (!res.ok) { toast.error('Failed to dismiss'); return }
+    setItems(prev => prev.filter(i => i.id !== id))
   }
 
   const pendingCount = items.filter(i => i.status === 'pending').length
@@ -97,14 +108,28 @@ export default function HandoffPage() {
             Comments flagged for manual review — AI drafts provided
           </p>
         </div>
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value as 'pending' | 'all')}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="pending">Pending only</option>
-          <option value="all">All statuses</option>
-        </select>
+        <div className="flex items-center gap-3">
+          <select
+            value={selectedPageId}
+            onChange={e => setSelectedPageId(e.target.value)}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All Pages</option>
+            {pages.map(page => (
+              <option key={page.id} value={page.id}>
+                {page.page_name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value as 'pending' | 'all')}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="pending">Pending only</option>
+            <option value="all">All statuses</option>
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -132,6 +157,9 @@ export default function HandoffPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-gray-900 dark:text-white">{item.commenter_name}</span>
                     <span className="text-xs text-gray-400">{(item.pages as unknown as { page_name: string } | null)?.page_name}</span>
+                    <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">
+                      Private DM
+                    </span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                       item.status === 'pending'
                         ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'

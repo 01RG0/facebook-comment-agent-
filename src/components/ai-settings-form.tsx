@@ -38,20 +38,10 @@ interface Settings {
   messaging_unavailable_reply?: string | null
 }
 
-interface HandoffItem {
-  id: string
-  commenter_name: string
-  comment_text: string
-  ai_draft: string | null
-  status: string
-  created_at: string
-}
-
 interface Props {
   pages: Page[]
   selectedPageId: string | null
   initialSettings: Settings | null
-  handoffItems: HandoffItem[]
 }
 
 const AI_PROVIDERS = [
@@ -73,7 +63,7 @@ const LANGUAGES = [
   { value: 'Indonesian', label: 'Indonesian' },
 ]
 
-export default function AiSettingsForm({ pages, selectedPageId, initialSettings, handoffItems }: Props) {
+export default function AiSettingsForm({ pages, selectedPageId, initialSettings }: Props) {
   const router = useRouter()
   const pathname = usePathname()
 
@@ -91,85 +81,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
     ai_model: initialSettings?.ai_model ?? '',
     preferred_ai_key_ids: (initialSettings?.preferred_ai_key_ids as string[] | null) ?? [],
     custom_base_url: initialSettings?.custom_base_url ?? '',
-    reply_instructions: initialSettings?.reply_instructions ?? `أنت مساعد ذكي يرد على تعليقات طلاب الأستاذ أسامة سعد الله، أستاذ الرياضيات والإحصاء في الإسكندرية.
-ردودك تصل للطلاب كرسائل خاصة على الماسنجر — كن ودودًا ودافئًا ومشجعًا.
-
-## قواعد أساسية
-- ردودك دايمًا خاصة (برايفت ماسنجر) — لو الطالب سأل في كومنت عن أي تفاصيل (سعر، مكان، موعد، تسجيل) ابعتهاله كاملة في الرسالة الخاصة
-- رد بنفس لغة الطالب (عربي أو إنجليزي)
-- إذا كان السؤال عن شيء مش موجود في معلوماتك قوله "تابع البيدج هتنزلكم التفاصيل"
-- لا تخترع مواعيد أو أماكن — اذكر فقط ما هو مذكور هنا
-
-## عن الأستاذ
-- الاسم: أستاذ أسامة سعد الله
-- التخصص: رياضيات وإحصاء — ثانوي
-- المدينة: الإسكندرية
-- الصفحة: osamasaadallah.eg
-- facebook page: www.facebook.com/Osamasaadallah.eg
-
-## المواد والمراحل المتاحة
-- تالتة ثانوي — رياضيات (علمي رياضة): متاح ✅
-- تالتة ثانوي — إحصاء: متاح ✅
-- تانية ثانوي — بكالوريا 2027: متاح ✅
-- أولى ثانوي — 2028: متاح ✅
-
----
-
-## مواعيد وأماكن الحصص
-
-### تالتة ثانوي — رياضيات (علمي رياضة)
-نظام الحضور: حصتين في الأسبوع / 8 حصص في الشهر
-الأحد-الأربعاء: سنتر نوبل 8ص | الأحد: كامبردج 11ص | الاثنين: الصخرة 8ص | الثلاثاء: نولدج 8ص | الأربعاء مع: دار العلوم 2:30 | الخميس مع: ستارز 8ص | الجمعة مع: يونايتد 8ص
-أسعار (رسالة خاصة فقط): كل 4 حصص = 250ج | مذكرة الهندسة الفراغية = 170ج
-
-### تالتة ثانوي — إحصاء
-الأحد: كامبردج 1ظ | الاثنين: فاروس 11ظ | الثلاثاء: نولدج 2ظ | الأربعاء: نوبل 11ص | الخميس: ستارز 11ص | الجمعة: دار العلوم 2ظ
-
-### حصص السبت — تالتة ثانوي رياضيات
-8ص سنتر مكة | 12:30ظ سمارت الدقي | 3:30م سنتر K
-
-### تانية ثانوي — بكالوريا 2027
-أسعار (رسالة خاصة فقط): الشهر 6 حصص / 350ج (شامل 2 كود) | أو 75ج/حصة | ID = 30ج
-مواعيد البداية: الأحد 30/8 كامبردج 7:30م | الاثنين 31/8 فاروس2 2م | الثلاثاء 1/9 نولدج 5م | الأربعاء 2/9 الصخرة 7م | الخميس 3/9 ستارز 2م | الجمعة 4/9 نوبل 12ظ | الجمعة 4/9 دار العلوم 4م
-
-### أولى ثانوي — 2028
-أسعار (رسالة خاصة فقط): 220ج/شهر | أو 65ج/حصة | ID = 30ج
-مواعيد البداية: الأحد 30/8 نوبل مج1 4م | الأحد 30/8 كامبردج 6م | الاثنين 31/8 فاروس2 4م و6م | الثلاثاء 1/9 أكاديمية النصر 3م | الثلاثاء 1/9 نولدج 7م | الأربعاء 2/9 دار العلوم 4م | الأربعاء 2/9 الصخرة 6م | الخميس 3/9 ستارز 4م | الخميس 3/9 المدينة 6م | الخميس 3/9 ليوفارديا 7:30م | الجمعة 4/9 يونايتد 11ص | الجمعة 4/9 نوبل مج2 2م
-
----
-
-## عناوين السناتر
-
-كامبردج: سيدي بشر قبلي، أول شارع المسرح، أمام مزلقان سيدي بشر
-نوبل (مج1): ميدان الساعة، أول كوبري الساعة، بجوار مستشفي لواء الإسلام، تقاطع جزارة اللوتس
-نوبل (مج2/الجديد): أول كوبري الساعة، شارع شركة البلاستيك، بجوار كافتيريا وادي الملوك، تقاطع بازار الأسطورة
-ستارز 2 (الجوهرة): المندرة بحري، شارع حسني للمشويات، تاني تقاطع شمال، شارع الجراج
-نولدج: محرم بك الرصافة، بوالينو الترام، بعد مسجد أولاد الشيخ، أمام سنتر هاوس
-يونايتد: الحضرة القديمة، نزلة أبو العلا، فوق فرع فودافون، مدخل العمارة بجوار أوكازيون
-الصخرة (ميامي): تحت كوبري 45، عند شيكو للموبايلات
-دار العلوم: سيدي بشر قبلي، شارع 24 أرض الفضالي، بجوار المدرسة
-فاروس 2: الهانوفيل، أمام المدرسة النموذجية
-أكاديمية النصر: حجر النواتية، محور المحمودية، بجوار مسجد السمارسي، أمام حمامات السباحة
-المدينة: المندرة قبلي، أمام جامع الفرج، أمام موقف الساعة والعوايد
-العلا: شارع أحمد أبوسليمان، فوق كافتيريا العشري
-
----
-
-## وظيفة إشراف قاعة (مؤقتة — أسبوعين فقط)
-مطلوب شباب وبنات لإشراف القاعة.
-مواعيد الأنترفيو: الثلاثاء 9ص-2م (نولدج محرم بك) | الأربعاء 2م-5م (دار العلوم 24 فضالي) | الخميس 9ص-3م (ستارز المندرة) | الجمعة 12ظ-4م (نوبل الساعة)
-شروط: حسن المظهر، حسن التعامل مع الطلاب، الالتزام بمواعيد العمل. كل التفاصيل في الأنترفيو.
-
----
-
-## ردود نموذجية
-- سؤال عن سعر (رسالة خاصة فقط): اذكر السعر المناسب لسنة الطالب
-- سؤال عن الـ ID: "الـ ID بـ 30 جنيه لو لسه مستلمتهوش 😊"
-- سؤال عن وظيفة إشراف: اذكر مواعيد الأنترفيو والسناتر
-- سؤال عن مذكرة: "مذكرة الهندسة الفراغية 170ج. باقي الفروع هتنزل قريبًا 😊"
-- سؤال عن عنوان سنتر: أعطِه العنوان كامل من قسم العناوين
-- طالب بيشكر أو يدعي: رد بدعاء ودافئ ومشجع ❤️
-- سؤال مش موجود في المعلومات: "تابع البيدج هتنزلكم التفاصيل 😊"`,
+    reply_instructions: initialSettings?.reply_instructions ?? 'You are a helpful assistant. Reply professionally and concisely to customer inquiries about {{business_name}}.',
     reply_language: initialSettings?.reply_language ?? 'auto',
     reply_delay_seconds: initialSettings?.reply_delay_seconds ?? 0,
     max_replies_per_hour: initialSettings?.max_replies_per_hour ?? 100,
@@ -198,11 +110,6 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
   const [testResult, setTestResult] = useState<{ reply: string; provider: string; model: string } | null>(null)
   const [detectingModels, setDetectingModels] = useState(false)
   const [detectedModels, setDetectedModels] = useState<string[]>([])
-  const [handoffList, setHandoffList] = useState<HandoffItem[]>(handoffItems)
-  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(handoffItems.map(h => [h.id, h.ai_draft ?? '']))
-  )
-  const [sendingHandoff, setSendingHandoff] = useState<string | null>(null)
 
   const handlePageChange = (id: string) => {
     router.push(`${pathname}?page=${id}`)
@@ -229,36 +136,6 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
       toast.error((err as Error).message)
     } finally {
       setDetectingModels(false)
-    }
-  }
-
-  const handleSendHandoff = async (itemId: string) => {
-    setSendingHandoff(itemId)
-    try {
-      const res = await fetch(`/api/handoff/${itemId}/reply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reply_text: replyDrafts[itemId] }),
-      })
-      if (!res.ok) throw new Error((await res.json()).error)
-      toast.success('Reply sent')
-      setHandoffList(list => list.filter(h => h.id !== itemId))
-    } catch (err) {
-      toast.error((err as Error).message)
-    } finally {
-      setSendingHandoff(null)
-    }
-  }
-
-  const handleDismissHandoff = async (itemId: string) => {
-    try {
-      const res = await fetch(`/api/handoff/${itemId}/reply`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) throw new Error((await res.json()).error)
-      setHandoffList(list => list.filter(h => h.id !== itemId))
-    } catch (err) {
-      toast.error((err as Error).message)
     }
   }
 
@@ -379,7 +256,6 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
       )}
 
       {selectedPageId && (
-        <>
         <form onSubmit={handleSave} className="space-y-6">
           {/* AI Provider */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
@@ -915,63 +791,6 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings,
             </button>
           </div>
         </form>
-
-        {/* Inline Handoff Queue */}
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">🤝 Pending Handoffs</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Comments held for manual reply — edit the draft and click Send to deliver it as a private Messenger message.</p>
-            </div>
-            {handoffList.length > 0 && (
-              <span className="text-xs font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded-full">
-                {handoffList.length} pending
-              </span>
-            )}
-          </div>
-
-          {handoffList.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">No pending handoffs for this page.</p>
-          ) : (
-            <div className="space-y-4">
-              {handoffList.map(item => (
-                <div key={item.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{item.commenter_name}</span>
-                      <p className="text-sm text-gray-900 dark:text-white mt-0.5">{item.comment_text}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDismissHandoff(item.id)}
-                      className="text-xs text-gray-400 hover:text-red-500 transition shrink-0"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Reply</label>
-                    <textarea
-                      rows={2}
-                      value={replyDrafts[item.id] ?? ''}
-                      onChange={e => setReplyDrafts(d => ({ ...d, [item.id]: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleSendHandoff(item.id)}
-                    disabled={sendingHandoff === item.id || !replyDrafts[item.id]}
-                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-medium rounded-lg transition"
-                  >
-                    {sendingHandoff === item.id ? 'Sending...' : 'Send Reply'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        </>
       )}
     </div>
   )

@@ -24,8 +24,8 @@ interface AiLog {
 }
 
 interface LogsResponse {
-  logs: AiLog[]
-  total: number
+  data: AiLog[]
+  count: number
 }
 
 export default function AdminLogsPanel() {
@@ -48,7 +48,7 @@ export default function AdminLogsPanel() {
 
   const { data, isLoading } = useSWR<LogsResponse>(buildUrl(), fetcher, { refreshInterval: 15000 })
 
-  const totalPages = Math.ceil((data?.total ?? 0) / limit)
+  const totalPages = Math.ceil((data?.count ?? 0) / limit)
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -89,7 +89,7 @@ export default function AdminLogsPanel() {
           </button>
         )}
         <span className="ml-auto text-sm text-gray-500 self-center">
-          {data?.total?.toLocaleString() ?? '—'} total
+          {data?.count?.toLocaleString() ?? '—'} total
         </span>
       </div>
 
@@ -114,12 +114,12 @@ export default function AdminLogsPanel() {
                     <div className="inline-block w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                   </td>
                 </tr>
-              ) : (data?.logs ?? []).length === 0 ? (
+              ) : (data?.data ?? []).length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center text-gray-500">No logs found</td>
                 </tr>
               ) : (
-                (data?.logs ?? []).map(log => (
+                (data?.data ?? []).map(log => (
                   <tr key={log.id} className="hover:bg-gray-800/30 transition-colors group">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">

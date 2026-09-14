@@ -19,27 +19,14 @@ export default function OnboardingPage() {
   const [enabling, setEnabling] = useState(false)
   const [done, setDone] = useState(false)
 
-  useEffect(() => {
-    fetch('/api/pages')
-      .then(r => r.json())
-      .then(data => {
-        if (data.pages?.length) {
-          setPages(data.pages)
-          setSelectedPage(data.pages[0].id)
-          setStep(1)
-        }
-      })
-      .catch(() => {})
-  }, [])
-
   const pollForPages = async () => {
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 2000))
       const res = await fetch('/api/pages')
       const data = await res.json()
-      if (data.pages?.length) {
-        setPages(data.pages)
-        setSelectedPage(data.pages[0].id)
+      if (data?.length) {
+        setPages(data)
+        setSelectedPage(data[0].id)
         setStep(1)
         return
       }
@@ -47,16 +34,33 @@ export default function OnboardingPage() {
     toast.error('No pages found — make sure you have a Facebook Page and try again')
   }
 
+  useEffect(() => {
+    fetch('/api/pages')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.length) {
+          setPages(data)
+          setSelectedPage(data[0].id)
+          setStep(1)
+        }
+      })
+      .catch(() => {})
+
+    const searchParams = new URLSearchParams(window.location.search)
+    if (searchParams.get('step') === '1') {
+      pollForPages()
+    }
+  }, [])
+
   const handleConnect = () => {
-    window.open('/api/facebook/connect', '_self')
-    pollForPages()
+    window.location.href = '/api/facebook/connect'
   }
 
   const handleSaveSettings = async () => {
     if (!selectedPage) return
     setSaving(true)
     const res = await fetch(`/api/pages/${selectedPage}/settings`, {
-      method: 'PUT',
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         reply_instructions: instructions,

@@ -42,16 +42,43 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
   const pathname = usePathname()
   const [statusFilter, setStatusFilter] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [offset, setOffset] = useState(0)
+  const [retryingId, setRetryingId] = useState<string | null>(null)
+  const pageSize = 25
 
   const pageId = selectedPageId
   const url = pageId
-    ? `/api/pages/${pageId}/activity?limit=50${statusFilter ? `&status=${statusFilter}` : ''}`
+    ? `/api/pages/${pageId}/activity?limit=${pageSize}&offset=${offset}${statusFilter ? `&status=${statusFilter}` : ''}`
     : null
 
-  const { data, isLoading } = useSWR(url, fetcher, { refreshInterval: 15000 })
+  const { data, isLoading, mutate } = useSWR(url, fetcher, { refreshInterval: 15000 })
 
   const handlePageChange = (id: string) => {
+    setOffset(0)
     router.push(`${pathname}?page=${id}`)
+  }
+
+  const handleStatusFilterChange = (val: string) => {
+    setStatusFilter(val)
+    setOffset(0)
+  }
+
+  const handleRetry = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    setRetryingId(id)
+    try {
+      const res = await fetch(`/api/comments/${id}/retry`, { method: 'POST' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        alert(json.error || 'Failed to retry comment')
+      } else {
+        await mutate()
+      }
+    } catch (err) {
+      alert((err as Error).message)
+    } finally {
+      setRetryingId(null)
+    }
   }
 
   if (pages.length === 0) {
@@ -61,6 +88,10 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
       </div>
     )
   }
+
+  const totalCount = data?.count ?? 0
+  const startEntry = totalCount > 0 ? offset + 1 : 0
+  const endEntry = Math.min(offset + pageSize, totalCount)
 
   return (
     <div className="space-y-4">
@@ -79,7 +110,7 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
         )}
         <select
           value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
+          onChange={e => handleStatusFilterChange(e.target.value)}
           className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">All statuses</option>
@@ -123,6 +154,15 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
                         {log.skip_reason && (
                           <span className="text-xs text-gray-400">({log.skip_reason})</span>
                         )}
+                        {log.status === 'failed' && (
+                          <button
+                            onClick={e => handleRetry(e, log.id)}
+                            disabled={retryingId === log.id}
+                            className="ml-2 px-2 py-0.5 text-xs font-medium bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded transition"
+                          >
+                            {retryingId === log.id ? 'Retrying...' : 'Retry'}
+                          </button>
+                        )}
                       </div>
                       <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
                         {log.comment_text}
@@ -164,9 +204,29 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
             ))}
           </div>
         )}
-        {data?.count > 50 && (
-          <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800/30 text-center text-xs text-gray-500 dark:text-gray-400">
-            Showing 50 of {data.count} entries
+
+        {/* Pagination */}
+        {totalCount > 0 && (
+          <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+            <span>
+              Showing {startEntry}-{endEntry} of {totalCount}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setOffset(prev => Math.max(0, prev - pageSize))}
+                disabled={offset === 0}
+                className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setOffset(prev => prev + pageSize)}
+                disabled={offset + pageSize >= totalCount}
+                className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>

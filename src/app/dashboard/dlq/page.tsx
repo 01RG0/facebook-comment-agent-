@@ -23,21 +23,26 @@ export default function DLQPage() {
   const [retrying, setRetrying] = useState<string | null>(null)
   const [resolving, setResolving] = useState<string | null>(null)
   const [showResolved, setShowResolved] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
+  const pageSize = 25
 
   const load = useCallback(async () => {
+    setLoading(true)
     const supabase = createClient()
-    const q = supabase
+    let q = supabase
       .from('dead_letter_comments')
-      .select('id, fb_comment_id, fb_post_id, commenter_name, comment_text, attempts, last_error, created_at, resolved_at, pages(page_name)')
+      .select('id, fb_comment_id, fb_post_id, commenter_name, comment_text, attempts, last_error, created_at, resolved_at, pages(page_name)', { count: 'exact' })
       .order('created_at', { ascending: false })
-      .limit(50)
+      .range(offset, offset + pageSize - 1)
 
-    if (!showResolved) q.is('resolved_at', null)
+    if (!showResolved) q = q.is('resolved_at', null)
 
-    const { data } = await q
+    const { data, count } = await q
     setItems((data ?? []) as unknown as DLQItem[])
+    setTotalCount(count ?? 0)
     setLoading(false)
-  }, [showResolved])
+  }, [showResolved, offset, pageSize])
 
   useEffect(() => { load() }, [load])
 
@@ -81,11 +86,11 @@ export default function DLQPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             pageId: dlqRow.page_id,
-            fbPageId: page.fb_page_id,
-            commentId: item.fb_comment_id,
-            postId: item.fb_post_id,
-            commenterId: 'unknown',
-            commenterName: item.commenter_name,
+            fb_comment_id: item.fb_comment_id,
+            page_id: dlqRow.page_id,
+            post_id: item.fb_post_id,
+            commenter_id: 'unknown',
+            commenter_name: item.commenter_name,
             message: item.comment_text,
           }),
         })
@@ -119,6 +124,9 @@ export default function DLQPage() {
     }
   }
 
+  const startEntry = totalCount > 0 ? offset + 1 : 0
+  const endEntry = Math.min(offset + pageSize, totalCount)
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -130,7 +138,10 @@ export default function DLQPage() {
           <input
             type="checkbox"
             checked={showResolved}
-            onChange={e => setShowResolved(e.target.checked)}
+            onChange={e => {
+              setOffset(0)
+              setShowResolved(e.target.checked)
+            }}
             className="rounded border-gray-300 text-blue-600"
           />
           Show resolved
@@ -190,6 +201,31 @@ export default function DLQPage() {
               </div>
             </div>
           ))}
+
+          {/* Pagination */}
+          {totalCount > 0 && (
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 px-5 py-3 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+              <span>
+                Showing {startEntry}-{endEntry} of {totalCount}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setOffset(prev => Math.max(0, prev - pageSize))}
+                  disabled={offset === 0}
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setOffset(prev => prev + pageSize)}
+                  disabled={offset + pageSize >= totalCount}
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

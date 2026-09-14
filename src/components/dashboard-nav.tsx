@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 interface Props {
   user: { full_name: string | null; email: string; avatar_url: string | null }
   isTeamMember?: boolean
+  isAdmin?: boolean
 }
 
 const ownerLinks = [
@@ -25,7 +26,7 @@ const memberLinks = [
   { href: '/dashboard/handoff', label: 'Handoff', icon: '🤝' },
 ]
 
-export default function DashboardNav({ user, isTeamMember = false }: Props) {
+export default function DashboardNav({ user, isTeamMember = false, isAdmin = false }: Props) {
   const navLinks = isTeamMember ? memberLinks : ownerLinks
   const pathname = usePathname()
   const router = useRouter()
@@ -71,6 +72,20 @@ export default function DashboardNav({ user, isTeamMember = false }: Props) {
                 <span className="hidden sm:block">{link.label}</span>
               </Link>
             ))}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition',
+                  pathname === '/admin' || pathname.startsWith('/admin')
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800'
+                )}
+              >
+                <span aria-hidden="true">🛡️</span>
+                <span className="hidden sm:block">Admin</span>
+              </Link>
+            )}
           </div>
 
           {/* User Menu */}

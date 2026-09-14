@@ -40,16 +40,6 @@ export default async function SettingsPage({ searchParams }: Props) {
     settings = data
   }
 
-  const { data: handoffItems } = selectedPageId
-    ? await supabase
-        .from('handoff_queue')
-        .select('id, commenter_name, comment_text, ai_draft, status, created_at')
-        .eq('page_id', selectedPageId)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false })
-        .limit(20)
-    : { data: null }
-
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
@@ -72,7 +62,6 @@ export default async function SettingsPage({ searchParams }: Props) {
               ...settings,
               has_custom_api_key: !!(settings.ai_api_key_enc),
             } : null}
-            handoffItems={handoffItems ?? []}
           />
 
           {selectedPageId && (
