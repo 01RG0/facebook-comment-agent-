@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "start:all": "tsx src/workers/index.ts & next start",
+    "start": "concurrently --raw \"tsx src/workers/index.ts\" \"next start\"",
+    "start:next": "next start",
     "lint": "next lint",
     "worker": "tsx watch src/workers/index.ts",
     "worker:prod": "tsx src/workers/index.ts",
@@ -36,6 +36,7 @@
     "bullmq": "^5",
     "class-variance-authority": "^0.7",
     "clsx": "^2",
+    "concurrently": "^10.0.5",
     "date-fns": "^3",
     "dotenv": "^16",
     "ioredis": "^5",

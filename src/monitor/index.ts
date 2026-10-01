@@ -1,8 +1,6 @@
-import { Queue } from 'bullmq'
 import { createClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
 import pino from 'pino'
-import { getRedisConnection } from '@/lib/queue/client'
 import { decrypt } from '@/lib/crypto'
 
 const log = pino({ level: 'info' })
@@ -121,52 +119,6 @@ async function checkWebHttp() {
   }
 }
 
-// ── 3. Redis health ───────────────────────────────────────────────────────────
-
-async function checkRedis() {
-  const redis = getRedisConnection()
-  const t0 = Date.now()
-  try {
-    const pong = await redis.ping()
-    if (pong !== 'PONG') throw new Error(`Unexpected: ${pong}`)
-    const latencyMs = Date.now() - t0
-    const info = await redis.info('memory')
-    const usedMem = info.match(/used_memory_human:(.+)/)?.[1]?.trim()
-    const maxMem = info.match(/maxmemory_human:(.+)/)?.[1]?.trim()
-    if (latencyMs > 500) {
-      await logEvent('redis', 'warn', `Redis latency high: ${latencyMs}ms`, { latencyMs, usedMem })
-    } else if (!(await suppressDuplicateOk('redis', 'healthy'))) {
-      await logEvent('redis', 'ok', `Redis healthy (${latencyMs}ms, mem: ${usedMem})`, { latencyMs, usedMem, maxMem })
-    }
-  } catch (err) {
-    await logEvent('redis', 'error', `Redis unreachable: ${(err as Error).message}`)
-  }
-}
-
-// ── 4. BullMQ queue health ────────────────────────────────────────────────────
-
-async function checkQueue() {
-  const redis = getRedisConnection()
-  const queue = new Queue('comment-replies', { connection: redis })
-  try {
-    const [waiting, active, failed, delayed] = await Promise.all([
-      queue.getWaitingCount(),
-      queue.getActiveCount(),
-      queue.getFailedCount(),
-      queue.getDelayedCount(),
-    ])
-    const stats = { waiting, active, failed, delayed }
-    if (failed > 50)  await logEvent('queue', 'warn',  `High failed job count: ${failed}`, stats)
-    if (waiting > 500) await logEvent('queue', 'warn', `Queue backlog: ${waiting} waiting`, stats)
-    if (failed <= 50 && waiting <= 500 && !(await suppressDuplicateOk('queue', 'healthy'))) {
-      await logEvent('queue', 'ok', `Queue healthy`, stats)
-    }
-  } catch (err) {
-    await logEvent('queue', 'error', `Queue check failed: ${(err as Error).message}`)
-  } finally {
-    await queue.close()
-  }
-}
 
 // ── 5. Supabase health + latency ──────────────────────────────────────────────
 
@@ -397,8 +349,6 @@ async function runChecks() {
   log.info('--- health check run ---')
   await Promise.allSettled([
     checkWebHttp(),
-    checkRedis(),
-    checkQueue(),
     checkSupabase(),
     checkFacebookApi(),
     checkWebhookSubscriptions(),

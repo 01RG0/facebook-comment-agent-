@@ -1,18 +1,13 @@
-import { Worker, type Job } from 'bullmq'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createAiProvider } from '@/lib/ai/factory'
 import { sendZernioPrivateReply, sendZernioPublicReply, sendZernioImageInConversation } from '@/lib/zernio/client'
 import { logger } from '@/lib/logger'
 import type { CommentJobPayload } from '@/types/zernio'
-import { getRedisConnection } from './client'
 import type { AiProviderName } from '@/lib/ai/types'
 
-export function createCommentWorker() {
-  const worker = new Worker<CommentJobPayload>(
-    'comment-replies',
-    async (job: Job<CommentJobPayload>) => {
-      const { pageId, fbPageId, zernioAccountId, commentId, platformPostId, postId, from, message, createdTime } = job.data
-      const log = logger.child({ jobId: job.id, commentId, pageId })
+export async function processCommentJob(data: CommentJobPayload): Promise<void> {
+      const { pageId, fbPageId, zernioAccountId, commentId, platformPostId, postId, from, message, createdTime } = data
+      const log = logger.child({ commentId, pageId })
       log.info('Comment job picked up by worker')
       const db = getAdminClient()
 
@@ -155,13 +150,9 @@ export function createCommentWorker() {
 
       // ── 8. Reply delay ─────────────────────────────────────────────────────
       if (cfg.reply_delay_seconds > 0) {
-        const jobAge = (Date.now() - job.timestamp) / 1000
-        if (jobAge < cfg.reply_delay_seconds) {
-          const waitMs = (cfg.reply_delay_seconds - jobAge) * 1000
-          log.info({ waitMs }, 'Reply delay — moving job to delayed queue')
-          await job.moveToDelayed(Date.now() + waitMs)
-          return
-        }
+        const waitMs = cfg.reply_delay_seconds * 1000
+        log.info({ waitMs }, 'Reply delay — sleeping inline')
+        await new Promise(resolve => setTimeout(resolve, waitMs))
       }
 
       // ── 9. Build enhanced instructions with tone/length/blacklist ──────────
@@ -481,50 +472,6 @@ export function createCommentWorker() {
         latencyMs: aiResult.latencyMs ?? (Date.now() - t0),
         success: true,
       })
-    },
-    {
-      connection: getRedisConnection(),
-      concurrency: 5,
-    }
-  )
-
-  // ── DLQ: move to dead_letter_comments after all retries exhausted ──────────
-  worker.on('failed', async (job, err) => {
-    if (!job) return
-    const maxAttempts = job.opts?.attempts ?? 5
-    if (job.attemptsMade < maxAttempts) return
-
-    const { pageId, commentId, postId, from, message } = job.data
-    const db = getAdminClient()
-
-    try {
-      const { data: page } = await db
-        .from('pages')
-        .select('user_id')
-        .eq('id', pageId)
-        .single()
-
-      if (!page) return
-
-      await db.from('dead_letter_comments').upsert({
-        page_id: pageId,
-        user_id: page.user_id,
-        fb_comment_id: commentId,
-        fb_post_id: postId,
-        commenter_id: from.id,
-        commenter_name: from.name,
-        comment_text: message,
-        attempts: job.attemptsMade,
-        last_error: err.message,
-      }, { onConflict: 'fb_comment_id' })
-
-      logger.warn({ jobId: job.id, commentId, attempts: job.attemptsMade }, 'Moved to DLQ')
-    } catch (dlqErr) {
-      logger.error({ err: (dlqErr as Error).message }, 'Failed to write to DLQ')
-    }
-  })
-
-  return worker
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

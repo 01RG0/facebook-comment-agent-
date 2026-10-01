@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyZernioSignature } from '@/lib/zernio/signature'
-import { getCommentQueue } from '@/lib/queue/client'
+import { processCommentJob } from '@/lib/queue/comment-worker'
+import { processDmJob } from '@/lib/queue/dm-worker'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import type { ZernioCommentPayload } from '@/types/zernio'
@@ -182,31 +183,16 @@ export async function POST(req: NextRequest) {
     }
     insertedMsgId = insertedMsg?.id
 
-    // 5. If page.agent_enabled: enqueue job 'process-dm' with { threadId, pageId, senderId, senderName, message: text }
+    // 5. If page.agent_enabled: process DM inline (fire-and-forget)
     if (page.agent_enabled) {
-      const queue = getCommentQueue() as any
-      try {
-        await queue.add(
-          'process-dm',
-          {
-            threadId: thread.id,
-            pageId: page.id,
-            senderId,
-            senderName,
-            message: messageText,
-            fbPageId: page.fb_page_id,
-            zernioAccountId: accountId,
-            messageId: insertedMsg?.id,
-            fbMessageId: fbMessageId ? String(fbMessageId) : '',
-          },
-          {
-            jobId: fbMessageId ? `dm-${fbMessageId}` : undefined,
-          }
-        )
-        logger.info({ threadId: thread.id, pageId: page.id }, 'DM job enqueued')
-      } catch (queueErr) {
-        logger.error({ err: (queueErr as Error).message, threadId: thread.id }, 'Failed to enqueue DM job')
-      }
+      void processDmJob({
+        threadId: thread.id,
+        pageId: page.id,
+        senderId,
+        senderName,
+        message: messageText,
+      })
+      logger.info({ threadId: thread.id, pageId: page.id }, 'DM processing started')
     }
 
     // 6. Return NextResponse.json({ ok: true }) with status 200
@@ -268,30 +254,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // k. Enqueue to BullMQ queue 'comment-replies' with jobId = payload.comment.id:
-  const queue = getCommentQueue()
+  // k. Process comment inline (fire-and-forget — respond to Zernio immediately)
   try {
-    const job = await queue.add(
-      'process-comment',
-      {
-        pageId: page.id,
-        fbPageId,
-        zernioAccountId: payload.account.id,
-        commentId: payload.comment.id,
-        platformPostId: payload.comment.platformPostId,
-        postId: payload.comment.platformPostId,
-        from: {
-          id: payload.comment.author.id,
-          name: payload.comment.author.name ?? payload.comment.author.username ?? '',
-        },
-        message: payload.comment.text,
-        createdTime: new Date(payload.comment.createdAt).getTime() / 1000,
+    const jobData = {
+      pageId: page.id,
+      fbPageId,
+      zernioAccountId: payload.account.id,
+      commentId: payload.comment.id,
+      platformPostId: payload.comment.platformPostId,
+      postId: payload.comment.platformPostId,
+      from: {
+        id: payload.comment.author.id,
+        name: payload.comment.author.name ?? payload.comment.author.username ?? '',
       },
-      {
-        jobId: payload.comment.id,
-      }
-    )
-    logger.info({ jobId: job.id, commentId: payload.comment.id, pageId: page.id }, 'Comment job enqueued')
+      message: payload.comment.text,
+      createdTime: new Date(payload.comment.createdAt).getTime() / 1000,
+    }
+    void processCommentJob(jobData)
+    logger.info({ commentId: payload.comment.id, pageId: page.id }, 'Comment processing started')
 
     // Auto-save commenter as a contact (fire-and-forget, never block webhook response)
     try {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getCommentQueue } from '@/lib/queue/client'
+import { processCommentJob } from '@/lib/queue/comment-worker'
 
 export async function POST(
   _req: NextRequest,
@@ -27,27 +27,22 @@ export async function POST(
 
   if (!page) return NextResponse.json({ error: 'Page not found' }, { status: 404 })
 
-  const queue = getCommentQueue()
-  await queue.add(
-    'reply-comment',
-    {
-      pageId: comment.page_id,
-      fbPageId: page.fb_page_id,
-      zernioAccountId: page.zernio_account_id ?? '',
-      commentId: comment.fb_comment_id,
-      platformPostId: comment.fb_post_id,
-      postId: comment.fb_post_id,
-      from: { id: comment.commenter_id, name: comment.commenter_name },
-      message: comment.comment_text,
-      createdTime: Date.now(),
-    },
-    { jobId: `retry-${comment.fb_comment_id}-${Date.now()}` }
-  )
-
   await supabase
     .from('comments_log')
     .update({ status: 'pending', error_message: null })
     .eq('id', params.id)
+
+  void processCommentJob({
+    pageId: comment.page_id,
+    fbPageId: page.fb_page_id,
+    zernioAccountId: page.zernio_account_id ?? '',
+    commentId: comment.fb_comment_id,
+    platformPostId: comment.fb_post_id,
+    postId: comment.fb_post_id,
+    from: { id: comment.commenter_id, name: comment.commenter_name },
+    message: comment.comment_text,
+    createdTime: Date.now(),
+  })
 
   return NextResponse.json({ success: true })
 }
