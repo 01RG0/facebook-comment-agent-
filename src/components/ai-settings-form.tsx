@@ -216,7 +216,8 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
 
   const [testing, setTesting] = useState(false)
   const [testComment, setTestComment] = useState('')
-  const [testResult, setTestResult] = useState<{ reply: string; provider: string; model: string } | null>(null)
+  const [testRecipient, setTestRecipient] = useState('')
+  const [testResult, setTestResult] = useState<{ reply: string; provider: string; model: string; sent?: boolean; sendError?: string | null } | null>(null)
   const [detectingModels, setDetectingModels] = useState(false)
   const [detectedModels, setDetectedModels] = useState<string[]>([])
 
@@ -387,11 +388,13 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     try {
       const res = await fetch(`/api/pages/${selectedPageId}/test-reply`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comment_text: testComment }),
+        body: JSON.stringify({ comment_text: testComment, recipient_id: testRecipient.trim() || undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setTestResult(data)
+      if (data.sent) toast.success('Test DM sent successfully!')
+      if (data.sendError) toast.error(`Send failed: ${data.sendError}`)
     } catch (err) { toast.error(friendlyError(err)) }
     finally { setTesting(false) }
   }
@@ -622,7 +625,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
           </Section>
 
           {/* ── 5. Test ── */}
-          <Section icon={<FlaskConical className="w-5 h-5" />} title="Test the AI" description="See what the AI would reply — nothing is sent to Facebook">
+          <Section icon={<FlaskConical className="w-5 h-5" />} title="Test the AI" description="Generate a reply — optionally send it as a real DM to a Facebook user">
             <div className="space-y-3">
               <div className="flex flex-col sm:flex-row gap-2">
                 <input type="text" value={testComment} onChange={e => setTestComment(e.target.value)}
@@ -630,13 +633,35 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                   className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <button type="button" onClick={handleTestReply} disabled={testing || !testComment}
                   className="px-5 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-400 text-white text-sm font-medium rounded-xl transition whitespace-nowrap">
-                  {testing ? 'Generating...' : '✨ Generate reply'}
+                  {testing ? <><Loader2 className="w-4 h-4 animate-spin inline mr-1.5" />Working...</> : '✨ Generate'}
                 </button>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Send as real DM (optional)</label>
+                <input type="text" value={testRecipient} onChange={e => setTestRecipient(e.target.value)}
+                  placeholder="Facebook user ID / PSID — leave blank to preview only"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="text-xs text-gray-400 mt-1">Enter a Facebook user ID to actually send the generated reply via Messenger DM. You can find your own ID by commenting on your page and checking the Zernio inbox.</p>
+              </div>
               {testResult && (
-                <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-xl p-4">
-                  <p className="text-xs font-medium text-violet-500 dark:text-violet-400 mb-1">{testResult.provider} / {testResult.model}</p>
+                <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <p className="text-xs font-medium text-violet-500 dark:text-violet-400">{testResult.provider} / {testResult.model}</p>
+                    {testResult.sent && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-700 px-2 py-0.5 rounded-full">
+                        <Check className="w-3 h-3" /> DM Sent
+                      </span>
+                    )}
+                    {testResult.sendError && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-700 px-2 py-0.5 rounded-full">
+                        <X className="w-3 h-3" /> Send failed
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{testResult.reply}</p>
+                  {testResult.sendError && (
+                    <p className="text-xs text-red-500 mt-1">{testResult.sendError}</p>
+                  )}
                 </div>
               )}
             </div>
