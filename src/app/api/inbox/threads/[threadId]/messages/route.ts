@@ -118,28 +118,23 @@ export async function POST(
     const page = thread.page
     const accountId = page?.zernio_account_id ?? ''
 
-    // Call Zernio conversation messaging
-    let zernioMsgId: string | null = null
-    if (accountId) {
-      try {
-        // conversationId for Facebook Messenger is the participant/conversation ID (thread.sender_id)
-        const res = await sendZernioConversationMessage(thread.sender_id, accountId, text)
-        zernioMsgId = res?.messageId ?? null
-      } catch (convErr: any) {
-        return NextResponse.json(
-          { error: `Failed to send reply via Zernio: ${convErr?.message || 'Platform error'}` },
-          { status: 502 }
-        )
-      }
+    // Run Zernio send and profile fetch in parallel — both are independent
+    const [zernioResult, profileResult] = await Promise.allSettled([
+      accountId
+        ? sendZernioConversationMessage(thread.sender_id, accountId, text)
+        : Promise.resolve(null),
+      adminDb.from('profiles').select('full_name, email').eq('id', user.id).maybeSingle(),
+    ])
+
+    if (zernioResult.status === 'rejected') {
+      return NextResponse.json(
+        { error: `Failed to send reply via Zernio: ${zernioResult.reason?.message || 'Platform error'}` },
+        { status: 502 }
+      )
     }
 
-    // Fetch user profile for name label
-    const { data: profile } = await adminDb
-      .from('profiles')
-      .select('full_name, email')
-      .eq('id', user.id)
-      .maybeSingle()
-
+    const zernioMsgId = (zernioResult.value as any)?.messageId ?? null
+    const profile = profileResult.status === 'fulfilled' ? profileResult.value?.data : null
     const sentByLabel = profile?.full_name?.trim() || profile?.email || 'Agent'
 
     // Insert outbound message row
@@ -161,26 +156,20 @@ export async function POST(
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
-    // Update thread last_message_at and set status='in_progress' if open
-    const threadUpdates: Record<string, any> = {
-      last_message_at: new Date().toISOString(),
-    }
-    if (thread.status === 'open') {
-      threadUpdates.status = 'in_progress'
-    }
+    // Fire-and-forget thread update + event — don't block the response
+    const nowIso = new Date().toISOString()
+    const threadUpdates: Record<string, any> = { last_message_at: nowIso }
+    if (thread.status === 'open') threadUpdates.status = 'in_progress'
 
-    await adminDb
-      .from('messenger_threads')
-      .update(threadUpdates)
-      .eq('id', threadId)
-
-    // Insert thread_event for message sent
-    await adminDb.from('thread_events').insert({
-      thread_id: threadId,
-      actor_id: user.id,
-      event_type: 'message_sent',
-      payload: { message_id: message.id, direction: 'outbound' },
-    })
+    Promise.all([
+      adminDb.from('messenger_threads').update(threadUpdates).eq('id', threadId),
+      adminDb.from('thread_events').insert({
+        thread_id: threadId,
+        actor_id: user.id,
+        event_type: 'message_sent',
+        payload: { message_id: message.id, direction: 'outbound' },
+      }),
+    ]).catch(() => {})
 
     return NextResponse.json({ message }, { status: 201 })
   } catch (err: any) {
