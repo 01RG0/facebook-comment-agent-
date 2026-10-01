@@ -75,6 +75,9 @@ export default function CommentsClient() {
   const [sending, setSending] = useState(false)
   const [aiRepliedIds, setAiRepliedIds] = useState<Set<string>>(new Set())
 
+  const CACHE_KEY = 'fca_posts_cache'
+  const CACHE_TTL = 5 * 60 * 1000 // 5 min
+
   const refreshAiReplied = useCallback(async () => {
     try {
       const res = await fetch('/api/comments?aiReplied=1')
@@ -87,12 +90,27 @@ export default function CommentsClient() {
   }, [])
 
   const loadPosts = useCallback(async () => {
-    setLoading(true)
+    // 1. Show cached posts instantly if fresh enough
+    try {
+      const raw = localStorage.getItem(CACHE_KEY)
+      if (raw) {
+        const { posts: cached, cursor, ts } = JSON.parse(raw)
+        if (Date.now() - ts < CACHE_TTL && Array.isArray(cached) && cached.length > 0) {
+          setPosts(cached)
+          setPostsNextCursor(cursor ?? null)
+          setLoading(false)
+        }
+      }
+    } catch {}
+
+    // 2. Always refresh from Zernio in background
     try {
       const res = await fetch('/api/comments')
       const json = await res.json()
-      setPosts(json.posts ?? [])
+      const fresh = json.posts ?? []
+      setPosts(fresh)
       setPostsNextCursor(json.nextCursor ?? null)
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ posts: fresh, cursor: json.nextCursor ?? null, ts: Date.now() })) } catch {}
     } catch {
       toast.error('Failed to load posts')
     } finally {
@@ -189,6 +207,8 @@ export default function CommentsClient() {
 
   const hideComment = async (comment: Comment) => {
     if (!selectedPost) return
+    // optimistic
+    setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: true } : c))
     try {
       const res = await fetch(`/api/comments/${encodeURIComponent(comment.id)}`, {
         method: 'POST',
@@ -197,17 +217,22 @@ export default function CommentsClient() {
       })
       const data = await res.json()
       if (!res.ok) {
+        setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: false } : c))
         if (res.status === 422) { toast.warning(data.error || 'Already hidden'); return }
         throw new Error(data.error)
       }
       toast.success('Comment hidden')
-      setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: true } : c))
-    } catch (err: any) { toast.error(err?.message || 'Failed to hide') }
+    } catch (err: any) {
+      setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: false } : c))
+      toast.error(err?.message || 'Failed to hide')
+    }
   }
 
   const toggleLike = async (comment: Comment) => {
     if (!selectedPost) return
     const action = comment.isLiked ? 'unlike' : 'like'
+    // optimistic
+    setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isLiked: !c.isLiked } : c))
     try {
       const res = await fetch(`/api/comments/${encodeURIComponent(comment.id)}`, {
         method: 'POST',
@@ -216,39 +241,55 @@ export default function CommentsClient() {
       })
       const data = await res.json()
       if (!res.ok) {
+        setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isLiked: comment.isLiked } : c))
         if (res.status === 422) { toast.warning(data.error || 'Already done'); return }
         throw new Error(data.error)
       }
-      setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isLiked: !c.isLiked } : c))
-    } catch (err: any) { toast.error(err?.message || `Failed to ${action}`) }
+    } catch (err: any) {
+      setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isLiked: comment.isLiked } : c))
+      toast.error(err?.message || `Failed to ${action}`)
+    }
   }
 
   const unhideComment = async (comment: Comment) => {
     if (!selectedPost) return
+    setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: false } : c))
     try {
       const res = await fetch(`/api/comments/${encodeURIComponent(comment.id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'unhide', platformPostId: selectedPost.id, accountId: selectedPost.zernio_account_id }),
       })
-      if (!res.ok) throw new Error((await res.json()).error)
+      if (!res.ok) {
+        setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: true } : c))
+        throw new Error((await res.json()).error)
+      }
       toast.success('Comment unhidden')
-      setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: false } : c))
-    } catch (err: any) { toast.error(err?.message || 'Failed to unhide') }
+    } catch (err: any) {
+      setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: true } : c))
+      toast.error(err?.message || 'Failed to unhide')
+    }
   }
 
   const deleteComment = async (comment: Comment) => {
     if (!selectedPost || !confirm('Delete this comment?')) return
+    // optimistic
+    setComments(prev => prev.filter(c => c.id !== comment.id))
     try {
       const res = await fetch(`/api/comments/${encodeURIComponent(comment.id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', platformPostId: selectedPost.id, accountId: selectedPost.zernio_account_id }),
       })
-      if (!res.ok) throw new Error((await res.json()).error)
+      if (!res.ok) {
+        setComments(prev => [...prev, comment])
+        throw new Error((await res.json()).error)
+      }
       toast.success('Comment deleted')
-      setComments(prev => prev.filter(c => c.id !== comment.id))
-    } catch (err: any) { toast.error(err?.message || 'Failed to delete') }
+    } catch (err: any) {
+      setComments(prev => [...prev, comment])
+      toast.error(err?.message || 'Failed to delete')
+    }
   }
 
   const filtered = posts.filter(p =>
