@@ -68,6 +68,11 @@ export async function GET(
       return NextResponse.json({ error: accessErr }, { status: accessStatus })
     }
 
+    // Clear unread count when thread is opened
+    if ((thread.unread_count ?? 0) > 0) {
+      adminDb.from('messenger_threads').update({ unread_count: 0 }).eq('id', threadId).then(() => {})
+    }
+
     // Sync messages from Zernio before reading from DB (fills webhook gaps)
     const page = thread.page
     if (page?.zernio_account_id && thread.sender_id) {

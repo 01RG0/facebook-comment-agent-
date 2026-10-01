@@ -185,6 +185,13 @@ export default function MessengerInboxPage() {
   )
   const teamMembers = useMemo(() => teamData?.members ?? [], [teamData])
 
+  // Clear unread dot in sidebar after thread detail loads
+  useEffect(() => {
+    if (threadDetail && (threadDetail.unread_count ?? 0) > 0) {
+      mutateThreads()
+    }
+  }, [threadDetail?.id, threadDetail?.unread_count]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Scroll to bottom of message timeline on new messages or thread switch
   useEffect(() => {
     if (messagesEndRef.current) {
