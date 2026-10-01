@@ -396,17 +396,21 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
         await sendZernioPrivateReply(effectivePostId, commentId, effectiveAccountId, replyText)
       } catch (msgErr) {
         const errText = (msgErr as Error).message.toLowerCase()
-        const isBlocked = errText.includes('privatereplyconsumed') || errText.includes('2018278') || errText.includes('551') || errText.includes('messaging') || errText.includes('privacy') || errText.includes('opted out') || errText.includes('blocked')
+        const isBlocked = errText.includes('privatereplyconsumed') || errText.includes('2018278') || errText.includes('551') || errText.includes('messaging') || errText.includes('privacy') || errText.includes('opted out') || errText.includes('blocked') || errText.includes('10901') || errText.includes('time expired') || errText.includes('replying time')
         if (!isBlocked) throw msgErr
-        log.warn({ err: (msgErr as Error).message }, 'Private messaging blocked — posting public fallback')
-        const fallbackText = ((cfg as Record<string, unknown>).messaging_unavailable_reply as string | null)?.trim()
-          || 'ابعتلنا مسدج ع رسائل الصفحة وهيتم الرد وتوضيح كل التفاصيل'
-        try {
-          await sendZernioPublicReply(effectivePostId, commentId, effectiveAccountId, fallbackText)
-        } catch (pubFallbackErr) {
-          log.warn({ err: (pubFallbackErr as Error).message }, 'Public fallback also failed')
+        const isExpired = errText.includes('10901') || errText.includes('time expired') || errText.includes('replying time')
+        log.warn({ err: (msgErr as Error).message, isExpired }, isExpired ? 'Private reply window expired' : 'Private messaging blocked — posting public fallback')
+        if (!isExpired) {
+          const fallbackText = ((cfg as Record<string, unknown>).messaging_unavailable_reply as string | null)?.trim()
+            || 'ابعتلنا مسدج ع رسائل الصفحة وهيتم الرد وتوضيح كل التفاصيل'
+          try {
+            await sendZernioPublicReply(effectivePostId, commentId, effectiveAccountId, fallbackText)
+          } catch (pubFallbackErr) {
+            log.warn({ err: (pubFallbackErr as Error).message }, 'Public fallback also failed')
+          }
         }
-        await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'skipped', skipReason: 'messaging_blocked' })
+        const skipReason = isExpired ? 'reply_window_expired' : 'messaging_blocked'
+        await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'skipped', skipReason })
         return
       }
 

@@ -172,7 +172,9 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
                           {log.status === 'replied' ? 'replied via DM' : log.status}
                         </span>
                         {log.skip_reason && (
-                          <span className="text-xs text-gray-400">({log.skip_reason})</span>
+                          <span className="text-xs text-gray-400">
+                            ({log.skip_reason === 'reply_window_expired' ? 'reply window expired' : log.skip_reason === 'messaging_blocked' ? 'messaging blocked' : log.skip_reason})
+                          </span>
                         )}
                         {log.status === 'failed' && (
                           <button
