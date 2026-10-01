@@ -1,7 +1,7 @@
 import { Worker, type Job } from 'bullmq'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createAiProvider } from '@/lib/ai/factory'
-import { sendZernioDirectMessage } from '@/lib/zernio/client'
+import { sendZernioConversationMessage } from '@/lib/zernio/client'
 import { validateExternalUrl } from '@/lib/utils'
 import { decrypt } from '@/lib/crypto'
 import { logger } from '@/lib/logger'
@@ -94,7 +94,7 @@ export function createDmWorker() {
         const aiReply = aiResult.text
 
         // ── 6. Send via Zernio ────────────────────────────────────────────────
-        await sendZernioDirectMessage(page.zernio_account_id ?? '', senderId, aiReply)
+        await sendZernioConversationMessage(senderId, page.zernio_account_id ?? '', aiReply)
         log.info({ senderId }, 'DM reply sent via Zernio')
 
         // ── 7. Store outbound message ─────────────────────────────────────────

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
   sendZernioPublicReply,
-  sendZernioDirectMessage,
+  sendZernioConversationMessage,
   hideZernioComment,
   unhideZernioComment,
   likeZernioComment,
@@ -71,7 +71,7 @@ export async function POST(
         if (!recipientId || !message) {
           return NextResponse.json({ error: 'recipientId and message required for dm' }, { status: 400 })
         }
-        await sendZernioDirectMessage(accountId, recipientId, message)
+        await sendZernioConversationMessage(recipientId, accountId, message)
         break
       }
       case 'hide': {
