@@ -34,7 +34,7 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
 
     const { data: settings } = await db
       .from('settings')
-      .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_ids, reply_instructions, reply_language, review_mode_enabled, dm_agent_enabled, dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length, dm_ai_provider, dm_ai_model')
+      .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_ids, reply_instructions, reply_language, review_mode_enabled, dm_agent_enabled, dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length, dm_ai_provider, dm_ai_model, dm_preferred_key_id')
       .eq('page_id', pageId)
       .maybeSingle()
 
@@ -65,7 +65,9 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
     let modelName = (settings?.dm_ai_model || settings?.ai_model) ?? undefined
     let baseUrl = settings?.custom_base_url ?? undefined
 
-    const preferredKeyIds: string[] = settings?.preferred_ai_key_ids ?? []
+    // DM-specific key takes priority over everything else
+    const dmKeyId: string | null = (settings as any)?.dm_preferred_key_id ?? null
+    const preferredKeyIds: string[] = dmKeyId ? [dmKeyId] : (settings?.preferred_ai_key_ids ?? [])
     if (preferredKeyIds.length > 0) {
       const { data: keyRow } = await db
         .from('ai_provider_keys')

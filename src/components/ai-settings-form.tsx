@@ -49,6 +49,7 @@ interface Settings {
   dm_reply_length?: string
   dm_ai_provider?: string | null
   dm_ai_model?: string | null
+  dm_preferred_key_id?: string | null
 }
 
 interface Props {
@@ -290,6 +291,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     dm_reply_length: initialSettings?.dm_reply_length ?? 'medium',
     dm_ai_provider: initialSettings?.dm_ai_provider ?? '',
     dm_ai_model: initialSettings?.dm_ai_model ?? '',
+    dm_preferred_key_id: initialSettings?.dm_preferred_key_id ?? '',
   })
 
   const [form, setForm] = useState(defaultForm)
@@ -400,6 +402,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
       dm_reply_length: f.dm_reply_length,
       dm_ai_provider: f.dm_ai_provider || null,
       dm_ai_model: f.dm_ai_model || null,
+      dm_preferred_key_id: f.dm_preferred_key_id || null,
     }
 
     if (f.ai_api_key?.trim()) payload.ai_api_key = f.ai_api_key.trim()
@@ -697,83 +700,71 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                 {/* AI Provider */}
                 <div className="space-y-5">
                   <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide pt-1">AI Provider</h3>
-                  <div className="grid sm:grid-cols-2 gap-4">
+
+                  {savedKeys.length > 0 ? (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Provider</label>
-                      <select value={form.ai_provider} onChange={e => set({ ai_provider: e.target.value, ai_model: '', custom_base_url: '' })}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        {AI_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">AI Key</label>
+                      <select
+                        value={form.preferred_ai_key_ids[0] ?? ''}
+                        onChange={e => set({ preferred_ai_key_ids: e.target.value ? [e.target.value] : [] })}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Default (use shared pool)</option>
+                        {savedKeys.map(k => (
+                          <option key={k.id} value={k.id}>{k.label} · {k.provider}{k.model ? ` / ${k.model}` : ''}</option>
+                        ))}
                       </select>
+                      <p className="text-xs text-gray-400 mt-1">Select a key from your <a href="/dashboard/ai-keys" className="underline hover:text-blue-500">AI Keys</a> page.</p>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Model (optional)</label>
-                      <div className="flex gap-2">
-                        {detectedModels.length > 0 ? (
-                          <select value={form.ai_model} onChange={e => set({ ai_model: e.target.value })}
-                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="">-- select --</option>
-                            {detectedModels.map(m => <option key={m} value={m}>{m}</option>)}
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Provider</label>
+                          <select value={form.ai_provider} onChange={e => set({ ai_provider: e.target.value, ai_model: '', custom_base_url: '' })}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            {AI_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                           </select>
-                        ) : (
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Model (optional)</label>
                           <input type="text" value={form.ai_model} onChange={e => set({ ai_model: e.target.value })}
                             placeholder={form.ai_provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini'}
-                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        )}
-                        <button type="button" onClick={handleDetectModels} disabled={detectingModels}
-                          className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 whitespace-nowrap transition">
-                          {detectingModels ? '...' : 'Detect'}
-                        </button>
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
                       </div>
-                    </div>
-                  </div>
-
-                  {form.ai_provider === 'openai-compat' && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Base URL</label>
-                      <input type="url" value={form.custom_base_url} onChange={e => set({ custom_base_url: e.target.value })}
-                        placeholder="https://openrouter.ai/api/v1"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  )}
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">API Key</label>
-                      {hasCustomApiKey && (
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-700 px-2 py-0.5 rounded-full">
-                            <Check className="w-3 h-3" /> Saved
-                          </span>
-                          <button type="button" onClick={handleRemoveApiKey} className="text-xs text-red-500 hover:underline">Remove</button>
+                      {form.ai_provider === 'openai-compat' && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Base URL</label>
+                          <input type="url" value={form.custom_base_url} onChange={e => set({ custom_base_url: e.target.value })}
+                            placeholder="https://openrouter.ai/api/v1"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                         </div>
                       )}
-                    </div>
-                    <div className="flex gap-2">
-                      <input type="password" value={form.ai_api_key} onChange={e => set({ ai_api_key: e.target.value })}
-                        placeholder="Leave blank to keep existing key" autoComplete="new-password"
-                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      {form.ai_api_key?.trim() && (
-                        <button type="button" onClick={() => doSave(formRef.current, false)}
-                          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition whitespace-nowrap">
-                          Save Key
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">Encrypted at rest. Leave blank to use the shared key pool.</p>
-                  </div>
-
-                  {savedKeys.length > 0 && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Allowed AI Keys</label>
-                      <div className="space-y-2">
-                        {savedKeys.map(k => (
-                          <label key={k.id} className="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" checked={form.preferred_ai_key_ids.includes(k.id)}
-                              onChange={e => set({ preferred_ai_key_ids: e.target.checked ? [...form.preferred_ai_key_ids, k.id] : form.preferred_ai_key_ids.filter(id => id !== k.id) })}
-                              className="w-4 h-4 rounded border-gray-300 text-blue-600" />
-                            <span className="text-sm text-gray-700 dark:text-gray-300">{k.label} <span className="text-gray-400">· {k.provider}{k.model ? ` / ${k.model}` : ''}</span></span>
-                          </label>
-                        ))}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">API Key</label>
+                          {hasCustomApiKey && (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-700 px-2 py-0.5 rounded-full">
+                                <Check className="w-3 h-3" /> Saved
+                              </span>
+                              <button type="button" onClick={handleRemoveApiKey} className="text-xs text-red-500 hover:underline">Remove</button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <input type="password" value={form.ai_api_key} onChange={e => set({ ai_api_key: e.target.value })}
+                            placeholder="Leave blank to keep existing key" autoComplete="new-password"
+                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          {form.ai_api_key?.trim() && (
+                            <button type="button" onClick={() => doSave(formRef.current, false)}
+                              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition whitespace-nowrap">
+                              Save Key
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">Or add reusable keys in <a href="/dashboard/ai-keys" className="underline hover:text-blue-500">AI Keys</a>.</p>
                       </div>
                     </div>
                   )}
@@ -892,24 +883,40 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                 </div>
               </Section>
 
-              {/* DM AI Provider override */}
-              <Section icon={<Zap className="w-5 h-5" />} title="DM AI Model" description="Override the AI provider/model just for DMs (optional)">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* DM AI Model override */}
+              <Section icon={<Zap className="w-5 h-5" />} title="DM AI Model" description="Override the AI key just for DMs (optional)">
+                {savedKeys.length > 0 ? (
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Provider</label>
-                    <select value={form.dm_ai_provider} onChange={e => set({ dm_ai_provider: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">AI Key</label>
+                    <select
+                      value={form.dm_preferred_key_id ?? ''}
+                      onChange={e => set({ dm_preferred_key_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
                       <option value="">Same as Comments</option>
-                      {AI_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      {savedKeys.map(k => (
+                        <option key={k.id} value={k.id}>{k.label} · {k.provider}{k.model ? ` / ${k.model}` : ''}</option>
+                      ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Model</label>
-                    <input type="text" value={form.dm_ai_model} onChange={e => set({ dm_ai_model: e.target.value })}
-                      placeholder="Leave blank to use default"
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Provider</label>
+                      <select value={form.dm_ai_provider} onChange={e => set({ dm_ai_provider: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Same as Comments</option>
+                        {AI_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Model</label>
+                      <input type="text" value={form.dm_ai_model} onChange={e => set({ dm_ai_model: e.target.value })}
+                        placeholder="Leave blank to use default"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
                   </div>
-                </div>
+                )}
               </Section>
 
             </div>

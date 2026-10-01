@@ -21,7 +21,7 @@ export async function GET(
 
   const { data: settings, error } = await supabase
     .from('settings')
-    .select('id, ai_provider, ai_model, custom_base_url, ai_api_key_enc, preferred_ai_key_ids, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text, public_comment_on_approval, public_comment_reply_mode, public_comment_ai_instructions, messaging_unavailable_reply, comment_agent_enabled, dm_agent_enabled, dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length, dm_ai_provider, dm_ai_model, updated_at')
+    .select('id, ai_provider, ai_model, custom_base_url, ai_api_key_enc, preferred_ai_key_ids, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text, public_comment_on_approval, public_comment_reply_mode, public_comment_ai_instructions, messaging_unavailable_reply, comment_agent_enabled, dm_agent_enabled, dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length, dm_ai_provider, dm_ai_model, dm_preferred_key_id, updated_at')
     .eq('page_id', params.pageId)
     .single()
 
@@ -63,7 +63,7 @@ export async function PATCH(
     messaging_unavailable_reply,
     comment_agent_enabled, dm_agent_enabled,
     dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length,
-    dm_ai_provider, dm_ai_model,
+    dm_ai_provider, dm_ai_model, dm_preferred_key_id,
   } = body
 
   const update: Record<string, unknown> = {}
@@ -100,6 +100,7 @@ export async function PATCH(
   if (dm_reply_length !== undefined) update.dm_reply_length = dm_reply_length
   if (dm_ai_provider !== undefined) update.dm_ai_provider = dm_ai_provider || null
   if (dm_ai_model !== undefined) update.dm_ai_model = dm_ai_model || null
+  if (dm_preferred_key_id !== undefined) update.dm_preferred_key_id = dm_preferred_key_id || null
 
   // Encrypt API key if provided
   if (ai_api_key) {
