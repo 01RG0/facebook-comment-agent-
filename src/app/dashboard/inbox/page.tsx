@@ -59,6 +59,11 @@ const fetcher = (url: string) =>
     return res.json()
   })
 
+function safeUrl(url: unknown): string {
+  if (typeof url !== 'string') return '#'
+  return /^https?:\/\//i.test(url) ? url : '#'
+}
+
 function getInitials(name?: string | null, fallback = '?'): string {
   if (!name || !name.trim()) return fallback
   const parts = name.trim().split(/\s+/)
@@ -671,7 +676,7 @@ export default function MessengerInboxPage() {
         ) : (
           <>
             {/* ISSUE 4 — Conversation header: more padding, larger name, clear badges, labeled Assign dropdown, prominent action buttons */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-gray-800 bg-white dark:bg-gray-900">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-3 md:px-5 md:py-4 dark:border-gray-800 bg-white dark:bg-gray-900">
               <div className="flex items-center gap-3.5">
                 <Button
                   variant="ghost"
@@ -729,20 +734,20 @@ export default function MessengerInboxPage() {
                     )}
                   </div>
 
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[180px] sm:max-w-none">
                     User ID: {activeThread?.sender_id || '—'}
                   </p>
                 </div>
               </div>
 
               {/* Controls: Labeled assign dropdown + Resolve + Snooze buttons */}
-              <div className="flex items-center gap-2.5 flex-wrap">
-                {/* Clear 'Assign to' dropdown */}
-                <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Clear 'Assign to' dropdown — hidden on small screens */}
+                <div className="hidden sm:flex items-center gap-1.5">
                   <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     Assign to:
                   </span>
-                  <div className="w-40">
+                  <div className="w-36">
                     <Select
                       value={activeThread?.assigned_to || 'unassigned'}
                       onValueChange={handleAssignAgent}
@@ -792,11 +797,11 @@ export default function MessengerInboxPage() {
                   </Button>
                 )}
 
-                {/* Snooze button */}
+                {/* Snooze button — hidden on small screens */}
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1.5 text-xs font-medium text-gray-700 border-gray-300 hover:bg-gray-100 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800"
+                  className="hidden sm:flex h-8 gap-1.5 text-xs font-medium text-gray-700 border-gray-300 hover:bg-gray-100 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800"
                   disabled={isUpdatingStatus}
                   onClick={handleSnooze}
                 >
@@ -807,7 +812,7 @@ export default function MessengerInboxPage() {
             </div>
 
             {/* Conversation Messages + Notes Timeline */}
-            <ScrollArea className="flex-1 p-6">
+            <ScrollArea className="flex-1 p-3 sm:p-6">
               {threadDetailLoading && !threadDetail ? (
                 <div className="flex h-60 items-center justify-center">
                   <RefreshCw className="h-6 w-6 animate-spin text-blue-500" />
@@ -861,7 +866,7 @@ export default function MessengerInboxPage() {
                           */}
                           <div
                             className={cn(
-                              'max-w-[75%] px-4 py-2.5 text-xs shadow-sm leading-relaxed whitespace-pre-wrap break-words',
+                              'max-w-[85%] sm:max-w-[75%] px-3 sm:px-4 py-2.5 text-xs shadow-sm leading-relaxed whitespace-pre-wrap break-words',
                               isInbound
                                 ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100 rounded-2xl rounded-tl-sm'
                                 : isAi
@@ -971,7 +976,7 @@ export default function MessengerInboxPage() {
             </ScrollArea>
 
             {/* ISSUE 6 — Reply Box */}
-            <div className="border-t border-gray-200 bg-gray-50/50 p-5 dark:border-gray-800 dark:bg-gray-950/40 space-y-3">
+            <div className="border-t border-gray-200 bg-gray-50/50 p-3 sm:p-5 dark:border-gray-800 dark:bg-gray-950/40 space-y-3">
               {/* Add Note toggle section */}
               {isNoteOpen ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-3.5 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30">
