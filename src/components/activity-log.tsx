@@ -169,7 +169,7 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
                           {log.commenter_name}
                         </span>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${statusStyles[log.status]}`}>
-                          {log.status}
+                          {log.status === 'replied' ? 'replied via DM' : log.status}
                         </span>
                         {log.skip_reason && (
                           <span className="text-xs text-gray-400">({log.skip_reason})</span>
@@ -202,7 +202,7 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
                     </div>
                     {log.reply_text && (
                       <div>
-                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Reply</p>
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Private Reply sent to Messenger <span className="normal-case text-blue-500">· DM</span></p>
                         <p className="text-gray-800 dark:text-gray-200">{log.reply_text}</p>
                         {log.ai_provider && (
                           <p className="text-xs text-gray-400 mt-1">
