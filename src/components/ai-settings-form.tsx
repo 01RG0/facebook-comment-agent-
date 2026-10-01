@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 import {
@@ -213,6 +213,8 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [showPromptPreview, setShowPromptPreview] = useState(false)
   const statusTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const skipAutoSaveRef = useRef(true)
 
   const [detectingModels, setDetectingModels] = useState(false)
   const [detectedModels, setDetectedModels] = useState<string[]>([])
@@ -273,11 +275,26 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
   })
 
   const [form, setForm] = useState(defaultForm)
+  const formRef = useRef(form)
   useEffect(() => {
     setHasCustomApiKey(initialSettings?.has_custom_api_key ?? false)
     setForm(defaultForm())
+    skipAutoSaveRef.current = true
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSettings])
+
+  // Keep formRef in sync so auto-save timer always reads latest value
+  useEffect(() => { formRef.current = form }, [form])
+
+  // Auto-save: debounce 1.5s after any form change (skip while typing api_key)
+  useEffect(() => {
+    if (skipAutoSaveRef.current) { skipAutoSaveRef.current = false; return }
+    if (!selectedPageId || formRef.current.ai_api_key) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(() => doSave(formRef.current, true), 1500)
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, selectedPageId])
 
   const set = (patch: Partial<typeof form>) => setForm(f => ({ ...f, ...patch }))
 
@@ -321,45 +338,44 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     }
   }
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const doSave = useCallback(async (f: typeof form, silent = false) => {
     if (!selectedPageId) return
     setSaveStatus('saving')
 
-    const instructions = form.builder_manual_mode ? form.reply_instructions : compiledPrompt
-    const neverSay = form.builder_manual_mode ? [] : form.builder_never_say
-    const skipWords = form.builder_manual_mode ? [] : form.builder_skip_words
+    const instructions = f.builder_manual_mode ? f.reply_instructions : compileInstructions(f)
+    const neverSay = f.builder_manual_mode ? [] : f.builder_never_say
+    const skipWords = f.builder_manual_mode ? [] : f.builder_skip_words
     const hasSkipWords = skipWords.length > 0
 
     const payload: Record<string, unknown> = {
-      ai_provider: form.ai_provider,
-      ai_model: form.ai_model || null,
-      preferred_ai_key_ids: form.preferred_ai_key_ids,
-      custom_base_url: form.custom_base_url || null,
+      ai_provider: f.ai_provider,
+      ai_model: f.ai_model || null,
+      preferred_ai_key_ids: f.preferred_ai_key_ids,
+      custom_base_url: f.custom_base_url || null,
       reply_instructions: instructions,
-      reply_language: form.reply_language,
-      reply_tone: form.reply_tone === 'custom' ? form.custom_tone_text.trim() || 'friendly' : form.reply_tone,
-      reply_length: form.reply_length,
-      reply_delay_seconds: form.reply_delay_seconds,
-      max_replies_per_hour: form.max_replies_per_hour,
-      keyword_filter: form.keyword_filter_raw ? form.keyword_filter_raw.split(',').map(s => s.trim()).filter(Boolean) : null,
-      blacklisted_user_ids: form.blacklisted_user_ids_raw ? form.blacklisted_user_ids_raw.split(',').map(s => s.trim()).filter(Boolean) : null,
-      reply_to_own_posts_only: form.reply_to_own_posts_only,
+      reply_language: f.reply_language,
+      reply_tone: f.reply_tone === 'custom' ? f.custom_tone_text.trim() || 'friendly' : f.reply_tone,
+      reply_length: f.reply_length,
+      reply_delay_seconds: f.reply_delay_seconds,
+      max_replies_per_hour: f.max_replies_per_hour,
+      keyword_filter: f.keyword_filter_raw ? f.keyword_filter_raw.split(',').map(s => s.trim()).filter(Boolean) : null,
+      blacklisted_user_ids: f.blacklisted_user_ids_raw ? f.blacklisted_user_ids_raw.split(',').map(s => s.trim()).filter(Boolean) : null,
+      reply_to_own_posts_only: f.reply_to_own_posts_only,
       reply_blacklist_words: neverSay.length ? neverSay : null,
-      review_mode_enabled: form.review_mode_enabled,
-      auto_retry_enabled: form.auto_retry_enabled,
-      max_retry_attempts: form.max_retry_attempts,
-      human_handoff_enabled: hasSkipWords ? true : (form.human_handoff_enabled || form.public_comment_handoff_enabled),
+      review_mode_enabled: f.review_mode_enabled,
+      auto_retry_enabled: f.auto_retry_enabled,
+      max_retry_attempts: f.max_retry_attempts,
+      human_handoff_enabled: hasSkipWords ? true : (f.human_handoff_enabled || f.public_comment_handoff_enabled),
       human_handoff_keywords: skipWords.length ? skipWords : null,
-      public_comment_reply_enabled: form.public_comment_reply_enabled,
-      public_comment_reply_mode: form.public_comment_reply_mode,
-      public_comment_ai_instructions: form.public_comment_ai_instructions || null,
-      messaging_unavailable_reply: form.messaging_unavailable_reply,
-      public_comment_reply_text: form.public_comment_reply_text,
-      public_comment_on_approval: form.public_comment_on_approval,
+      public_comment_reply_enabled: f.public_comment_reply_enabled,
+      public_comment_reply_mode: f.public_comment_reply_mode,
+      public_comment_ai_instructions: f.public_comment_ai_instructions || null,
+      messaging_unavailable_reply: f.messaging_unavailable_reply,
+      public_comment_reply_text: f.public_comment_reply_text,
+      public_comment_on_approval: f.public_comment_on_approval,
     }
 
-    if (form.ai_api_key?.trim()) payload.ai_api_key = form.ai_api_key.trim()
+    if (f.ai_api_key?.trim()) payload.ai_api_key = f.ai_api_key.trim()
 
     try {
       const res = await fetch(`/api/pages/${selectedPageId}/settings`, {
@@ -368,14 +384,21 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      if (payload.ai_api_key) { setHasCustomApiKey(true); set({ ai_api_key: '' }) }
-      setSaveStatus('saved'); toast.success('Settings saved')
+      if (payload.ai_api_key) { setHasCustomApiKey(true); set({ ai_api_key: '' }); router.refresh() }
+      setSaveStatus('saved')
+      if (!silent) toast.success('Settings saved')
       statusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000)
-      router.refresh()
     } catch (err) {
-      setSaveStatus('failed'); toast.error(friendlyError(err))
+      setSaveStatus('failed')
+      toast.error(friendlyError(err))
       statusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPageId])
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await doSave(form, false)
   }
 
   return (
@@ -672,9 +695,17 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                         </div>
                       )}
                     </div>
-                    <input type="password" value={form.ai_api_key} onChange={e => set({ ai_api_key: e.target.value })}
-                      placeholder="Leave blank to keep existing key" autoComplete="new-password"
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <div className="flex gap-2">
+                      <input type="password" value={form.ai_api_key} onChange={e => set({ ai_api_key: e.target.value })}
+                        placeholder="Leave blank to keep existing key" autoComplete="new-password"
+                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      {form.ai_api_key?.trim() && (
+                        <button type="button" onClick={() => doSave(formRef.current, false)}
+                          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition whitespace-nowrap">
+                          Save Key
+                        </button>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 mt-1">Encrypted at rest. Leave blank to use the shared key pool.</p>
                   </div>
 
@@ -753,18 +784,23 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
             )}
           </div>
 
-          {/* Save */}
-          <div className="flex justify-end pt-1">
-            <button type="submit" disabled={saveStatus === 'saving'}
-              className={`inline-flex items-center justify-center gap-2 min-w-[140px] px-6 py-2.5 font-semibold rounded-xl transition shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                saveStatus === 'saved' ? 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500'
-                : saveStatus === 'failed' ? 'bg-rose-600 hover:bg-rose-700 text-white focus:ring-rose-500'
-                : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white focus:ring-blue-500'}`}>
-              {saveStatus === 'saving' && <><Loader2 className="w-4 h-4 animate-spin" /><span>Saving...</span></>}
-              {saveStatus === 'saved' && <><Check className="w-4 h-4" /><span>Saved!</span></>}
-              {saveStatus === 'failed' && <><X className="w-4 h-4" /><span>Failed</span></>}
-              {saveStatus === 'idle' && <span>Save Settings</span>}
-            </button>
+          {/* Auto-save status indicator */}
+          <div className="flex justify-end pt-1 h-8">
+            {saveStatus === 'saving' && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                <Check className="w-3.5 h-3.5" /> Saved
+              </span>
+            )}
+            {saveStatus === 'failed' && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-rose-500">
+                <X className="w-3.5 h-3.5" /> Save failed
+              </span>
+            )}
           </div>
         </form>
       )}

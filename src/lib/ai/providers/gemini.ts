@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai'
-import type { AiProvider, AiReply } from '../types'
+import type { AiProvider, AiReply, ConversationMessage } from '../types'
 
 export class GeminiProvider implements AiProvider {
   private client: GoogleGenAI
@@ -11,15 +11,25 @@ export class GeminiProvider implements AiProvider {
     this.modelName = model
   }
 
-  async generateReply(comment: string, instructions: string, language: string): Promise<AiReply> {
+  async generateReply(comment: string, instructions: string, language: string, history?: ConversationMessage[]): Promise<AiReply> {
     const langNote = language === 'auto'
-      ? 'Reply in the same language the commenter used.'
+      ? 'Reply in the same language the user used.'
       : `Reply in ${language}.`
+
+    // Build multi-turn contents from history
+    const contents: { role: string; parts: { text: string }[] }[] = []
+    for (const msg of history ?? []) {
+      contents.push({ role: msg.role === 'user' ? 'user' : 'model', parts: [{ text: msg.text }] })
+    }
+    contents.push({ role: 'user', parts: [{ text: comment }] })
 
     const t0 = Date.now()
     const result = await this.client.models.generateContent({
       model: this.modelName,
-      contents: `${instructions}\n\n${langNote}\n\nComment: ${comment}\n\nPrivate reply:`,
+      contents,
+      config: {
+        systemInstruction: `${instructions}\n\n${langNote}`,
+      },
     })
     const latencyMs = Date.now() - t0
 

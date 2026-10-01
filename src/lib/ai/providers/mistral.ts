@@ -1,5 +1,5 @@
 import { Mistral } from '@mistralai/mistralai'
-import type { AiProvider, AiReply } from '../types'
+import type { AiProvider, AiReply, ConversationMessage } from '../types'
 
 export class MistralProvider implements AiProvider {
   private client: Mistral
@@ -11,17 +11,23 @@ export class MistralProvider implements AiProvider {
     this.modelName = model
   }
 
-  async generateReply(comment: string, instructions: string, language: string): Promise<AiReply> {
+  async generateReply(comment: string, instructions: string, language: string, history?: ConversationMessage[]): Promise<AiReply> {
     const langNote = language === 'auto'
-      ? 'Reply in the same language the commenter used.'
+      ? 'Reply in the same language the user used.'
       : `Reply in ${language}.`
+
+    const historyMessages = (history ?? []).map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.text,
+    }))
 
     const t0 = Date.now()
     const result = await this.client.chat.complete({
       model: this.modelName,
       messages: [
         { role: 'system', content: `${instructions}\n\n${langNote}` },
-        { role: 'user', content: `Comment: ${comment}\n\nWrite a private reply:` },
+        ...historyMessages,
+        { role: 'user', content: comment },
       ],
     })
     const latencyMs = Date.now() - t0

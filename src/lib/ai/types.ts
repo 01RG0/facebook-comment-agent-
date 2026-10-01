@@ -10,8 +10,13 @@ export interface AiReply {
   latencyMs?: number
 }
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant'
+  text: string
+}
+
 export interface AiProvider {
-  generateReply(comment: string, instructions: string, language: string): Promise<AiReply>
+  generateReply(comment: string, instructions: string, language: string, history?: ConversationMessage[]): Promise<AiReply>
   readonly providerName: string
   readonly modelName: string
 }

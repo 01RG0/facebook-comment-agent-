@@ -83,11 +83,25 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
       log.warn({ threadId }, 'DM job skipped — empty message text after all fallbacks')
       return
     }
+
+    // Fetch last 10 messages for context (excludes current — it hasn't been inserted yet)
+    const { data: historyRows } = await db
+      .from('messenger_messages')
+      .select('direction, text')
+      .eq('thread_id', threadId)
+      .order('sent_at', { ascending: false })
+      .limit(10)
+
+    const conversationHistory = (historyRows ?? [])
+      .reverse()
+      .map(m => ({ role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant', text: m.text ?? '' }))
+      .filter(m => m.text)
+
     const instructions = settings?.reply_instructions ?? 'You are a helpful assistant. Reply professionally and concisely.'
     const provider = createAiProvider({ provider: providerName, apiKey, model: modelName, baseUrl })
-    log.info({ provider: providerName }, 'DM AI generation started')
+    log.info({ provider: providerName, historyLength: conversationHistory.length }, 'DM AI generation started')
     const aiStart = Date.now()
-    const aiResult = await provider.generateReply(message, instructions, settings?.reply_language ?? 'auto')
+    const aiResult = await provider.generateReply(message, instructions, settings?.reply_language ?? 'auto', conversationHistory)
     const aiLatencyMs = Date.now() - aiStart
     const aiReply = aiResult.text
     log.info({ provider: providerName, latencyMs: aiLatencyMs, tokens: aiResult.tokens?.totalTokens }, 'DM AI generation done')
