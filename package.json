@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "start:all": "tsx src/workers/index.ts & next start",
     "lint": "next lint",
     "worker": "tsx watch src/workers/index.ts",
     "worker:prod": "tsx src/workers/index.ts",
