@@ -1,8 +1,15 @@
 'use client'
 
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
 import useSWR from 'swr'
+import { createClient } from '@supabase/supabase-js'
 import ActivityLog from '@/components/activity-log'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface Page { id: string; page_name: string; fb_page_id: string }
 
@@ -15,16 +22,25 @@ const STAT_COLORS = {
 
 export default function ActivityHome() {
   const searchParams = useSearchParams()
-  const router = useRouter()
 
   const { data: pages = [] } = useSWR<Page[]>('/api/pages', { refreshInterval: 60_000 })
 
   const selectedPageId = searchParams.get('page') ?? pages[0]?.id ?? null
 
-  const { data: stats } = useSWR(
+  const { data: stats, mutate: mutateStats } = useSWR(
     selectedPageId ? `/api/pages/${selectedPageId}/activity/stats` : null,
-    { refreshInterval: 30_000 }
+    { refreshInterval: 60_000 }
   )
+
+  // Stats update instantly when a new comment is processed
+  useEffect(() => {
+    if (!selectedPageId) return
+    const channel = supabase
+      .channel(`activity_stats:${selectedPageId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments_log', filter: `page_id=eq.${selectedPageId}` }, () => { mutateStats() })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [selectedPageId, mutateStats])
 
   const statRows = stats ? [
     { label: 'Total', value: stats.total },

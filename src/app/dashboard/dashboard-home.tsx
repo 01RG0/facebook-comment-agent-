@@ -3,14 +3,29 @@
 import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
 import PagesList from '@/components/pages-list'
 import ConnectFacebookBtn from '@/components/connect-facebook-btn'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface Props { firstName: string }
 
 export default function DashboardHome({ firstName }: Props) {
   const router = useRouter()
-  const { data: pages, isLoading } = useSWR('/api/pages', { refreshInterval: 30_000 })
+  const { data: pages, isLoading, mutate } = useSWR('/api/pages', { refreshInterval: 30_000 })
+
+  // Live updates — pages list updates instantly when agent is toggled in any session
+  useEffect(() => {
+    const channel = supabase
+      .channel('dashboard_pages')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pages' }, () => { mutate() })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [mutate])
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'

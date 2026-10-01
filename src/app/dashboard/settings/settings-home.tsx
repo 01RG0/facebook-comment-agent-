@@ -17,7 +17,7 @@ export default function SettingsHome() {
 
   const { data: settings, isLoading: settingsLoading } = useSWR(
     selectedPageId ? `/api/pages/${selectedPageId}/settings` : null,
-    { revalidateOnMount: true }
+    { revalidateOnMount: true, refreshInterval: 60_000 }
   )
 
   const isLoading = pagesLoading || (!!selectedPageId && settingsLoading && !settings)

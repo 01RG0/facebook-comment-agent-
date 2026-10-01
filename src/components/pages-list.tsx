@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { toast } from 'sonner'
@@ -42,12 +42,19 @@ interface PageStats {
 
 export default function PagesList({ initialPages }: Props) {
   const [pages, setPages] = useState<Page[]>(initialPages)
+  const togglingRef = useRef<Record<string, boolean>>({})
   const [toggling, setToggling] = useState<Record<string, boolean>>({})
   const [disconnecting, setDisconnecting] = useState<Record<string, boolean>>({})
   const [stats, setStats] = useState<Record<string, PageStats>>({})
   const [pageToDisconnect, setPageToDisconnect] = useState<Page | null>(null)
   const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({})
   const router = useRouter()
+
+  // Sync when parent SWR data updates (e.g. Realtime refresh), but skip if toggle is in-flight
+  useEffect(() => {
+    const anyToggling = Object.values(togglingRef.current).some(Boolean)
+    if (!anyToggling) setPages(initialPages)
+  }, [initialPages])
 
   useEffect(() => {
     pages.forEach(page => {
@@ -85,6 +92,9 @@ export default function PagesList({ initialPages }: Props) {
   }, [pages])
 
   const handleToggle = async (pageId: string, currentEnabled: boolean) => {
+    // Optimistic flip — instant UI response
+    setPages(ps => ps.map(p => p.id === pageId ? { ...p, agent_enabled: !currentEnabled } : p))
+    togglingRef.current = { ...togglingRef.current, [pageId]: true }
     setToggling(t => ({ ...t, [pageId]: true }))
     try {
       const res = await fetch(`/api/pages/${pageId}/toggle`, {
@@ -94,13 +104,14 @@ export default function PagesList({ initialPages }: Props) {
       })
       if (!res.ok) throw new Error((await res.json()).error)
       const updated = await res.json()
-      setPages(ps =>
-        ps.map(p => p.id === pageId ? { ...p, agent_enabled: updated.agent_enabled } : p)
-      )
+      setPages(ps => ps.map(p => p.id === pageId ? { ...p, agent_enabled: updated.agent_enabled } : p))
       toast.success(updated.agent_enabled ? 'Agent enabled' : 'Agent paused')
     } catch (err) {
+      // Revert on error
+      setPages(ps => ps.map(p => p.id === pageId ? { ...p, agent_enabled: currentEnabled } : p))
       toast.error(friendlyError(err))
     } finally {
+      togglingRef.current = { ...togglingRef.current, [pageId]: false }
       setToggling(t => ({ ...t, [pageId]: false }))
     }
   }
