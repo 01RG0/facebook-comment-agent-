@@ -17,7 +17,8 @@ export interface DmJobPayload {
 export async function processDmJob(data: DmJobPayload): Promise<void> {
   const { threadId, pageId, senderId, senderName, message } = data
   const log = logger.child({ threadId, pageId })
-  log.info('Processing DM job')
+  const jobStart = Date.now()
+  log.info({ senderName, messagePreview: message.slice(0, 80) }, 'DM job started')
 
   const db = getAdminClient()
 
@@ -80,11 +81,17 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
     if (baseUrl) { try { validateExternalUrl(baseUrl) } catch { baseUrl = undefined } }
     const instructions = settings?.reply_instructions ?? 'You are a helpful assistant. Reply professionally and concisely.'
     const provider = createAiProvider({ provider: providerName, apiKey, model: modelName, baseUrl })
+    log.info({ provider: providerName }, 'DM AI generation started')
+    const aiStart = Date.now()
     const aiResult = await provider.generateReply(message, instructions, settings?.reply_language ?? 'auto')
+    const aiLatencyMs = Date.now() - aiStart
     const aiReply = aiResult.text
+    log.info({ provider: providerName, latencyMs: aiLatencyMs, tokens: aiResult.tokens?.totalTokens }, 'DM AI generation done')
+    if (aiLatencyMs > 500) log.warn({ provider: providerName, latencyMs: aiLatencyMs }, 'Slow DM AI generation')
 
     await sendZernioConversationMessage(senderId, page.zernio_account_id ?? '', aiReply)
-    log.info({ senderId }, 'DM reply sent via Zernio')
+    const totalMs = Date.now() - jobStart
+    log.info({ senderId, totalMs }, 'DM reply sent via Zernio')
 
     await db.from('messenger_messages').insert({
       thread_id: threadId,
@@ -100,6 +107,6 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
     }).eq('id', threadId)
 
   } catch (err) {
-    log.error({ err: (err as Error).message }, 'DM processing error')
+    log.error({ err: (err as Error).message, totalMs: Date.now() - jobStart }, 'DM processing error')
   }
 }

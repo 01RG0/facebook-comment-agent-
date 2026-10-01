@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
       createdTime: new Date(payload.comment.createdAt).getTime() / 1000,
     }
     void processCommentJob(jobData)
-    logger.info({ commentId: payload.comment.id, pageId: page.id }, 'Comment processing started')
+    logger.info({ commentId: payload.comment.id, pageId: page.id, commenter: payload.comment.author?.name, messagePreview: (payload.comment.text ?? '').slice(0, 80) }, 'Comment processing started')
 
     // Auto-save commenter as a contact (fire-and-forget, never block webhook response)
     try {

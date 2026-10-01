@@ -8,7 +8,8 @@ import type { AiProviderName } from '@/lib/ai/types'
 export async function processCommentJob(data: CommentJobPayload): Promise<void> {
       const { pageId, fbPageId, zernioAccountId, commentId, platformPostId, postId, from, message, createdTime } = data
       const log = logger.child({ commentId, pageId })
-      log.info('Comment job picked up by worker')
+      const jobStart = Date.now()
+      log.info({ commenter: from.name, messagePreview: message.slice(0, 80) }, 'Comment job picked up by worker')
       const db = getAdminClient()
 
       // ── 1. Check idempotency (DB-level dedup) ──────────────────────────────
@@ -276,7 +277,9 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
               p_key_id: k.id, p_user_id: page.user_id,
               p_tokens_in: tokensIn, p_tokens_out: tokensOut, p_cost: cost,
             })
-            log.info({ provider: provider.providerName, keyId: k.id, tokens: aiResult.tokens?.totalTokens }, 'AI reply generated')
+            const aiLatencyMs = Date.now() - t0
+            log.info({ provider: provider.providerName, keyId: k.id, tokens: aiResult.tokens?.totalTokens, latencyMs: aiLatencyMs }, 'AI reply generated')
+            if (aiLatencyMs > 500) log.warn({ provider: provider.providerName, latencyMs: aiLatencyMs }, 'Slow AI generation')
             break
           } catch (e) {
             lastErr = e as Error
@@ -326,7 +329,9 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
           aiResult = await aiProvider.generateReply(message, enhancedInstructions, cfg.reply_language)
           resolvedProviderName = aiProvider.providerName
           resolvedModelName = aiProvider.modelName
-          log.info({ provider: aiProvider.providerName, tokens: aiResult.tokens?.totalTokens }, 'AI reply generated (legacy key)')
+          const aiLatencyMsLegacy = Date.now() - t0
+          log.info({ provider: aiProvider.providerName, tokens: aiResult.tokens?.totalTokens, latencyMs: aiLatencyMsLegacy }, 'AI reply generated (legacy key)')
+          if (aiLatencyMsLegacy > 500) log.warn({ provider: aiProvider.providerName, latencyMs: aiLatencyMsLegacy }, 'Slow AI generation')
         } catch (aiErr) {
           const errMsg = (aiErr as Error).message
           log.error({ err: errMsg }, 'AI generation failed')
@@ -438,7 +443,9 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
         }
       }
 
-      log.info('Private reply sent')
+      const totalMs = Date.now() - jobStart
+      log.info({ totalMs, provider: resolvedProviderName, model: resolvedModelName }, 'Private reply sent successfully')
+      if (totalMs > 500) log.warn({ totalMs }, 'Slow comment processing job')
 
       // ── 13. Increment rate-limit + usage buckets ───────────────────────────
       await db.rpc('increment_rate_bucket', { p_page_id: pageId, p_bucket_hour: bucketHour })
