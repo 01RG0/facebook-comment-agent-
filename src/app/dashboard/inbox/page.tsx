@@ -876,13 +876,13 @@ export default function MessengerInboxPage() {
                           >
                             {(msg as any).attachment_url ? (
                               (msg as any).attachment_type?.startsWith('image/') ? (
-                                <a href={(msg as any).attachment_url} target="_blank" rel="noopener noreferrer">
+                                <a href={safeUrl((msg as any).attachment_url)} target="_blank" rel="noopener noreferrer">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={(msg as any).attachment_url} alt={(msg as any).attachment_name || 'attachment'}
+                                  <img src={safeUrl((msg as any).attachment_url)} alt={(msg as any).attachment_name || 'attachment'}
                                     className="max-w-[220px] max-h-[200px] rounded-lg object-cover" />
                                 </a>
                               ) : (
-                                <a href={(msg as any).attachment_url} target="_blank" rel="noopener noreferrer"
+                                <a href={safeUrl((msg as any).attachment_url)} target="_blank" rel="noopener noreferrer"
                                   className="flex items-center gap-2 underline underline-offset-2">
                                   <FileText className="h-4 w-4 shrink-0" />
                                   {(msg as any).attachment_name || 'Download file'}
