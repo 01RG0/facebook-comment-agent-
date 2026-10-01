@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { fetchZernioConversations, fetchZernioMessages } from '@/lib/zernio/client'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
-// Backfill: create messenger_threads for contacts that have no thread yet.
-// Any authenticated account owner can run this for their own data.
+// Backfill: sync all Zernio conversations + messages into messenger_threads/messages.
+// Any authenticated account owner can run this for their own pages.
 export async function POST() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -14,84 +15,84 @@ export async function POST() {
 
   const db = getAdminClient()
 
-  // Get all contacts belonging to this admin's pages
-  const { data: contacts, error: cErr } = await db
-    .from('contacts')
-    .select('id, user_id, page_id, platform_user_id, name, last_seen_at')
+  // Get all pages for this user that have a Zernio account
+  const { data: pages, error: pErr } = await db
+    .from('pages')
+    .select('id, user_id, zernio_account_id')
     .eq('user_id', user.id)
+    .not('zernio_account_id', 'is', null)
 
-  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 })
+  if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
 
   let created = 0
+  let synced = 0
   let skipped = 0
 
-  for (const contact of contacts ?? []) {
-    // Check if thread already exists
-    const { data: existing } = await db
-      .from('messenger_threads')
-      .select('id')
-      .eq('page_id', contact.page_id)
-      .eq('sender_id', contact.platform_user_id)
-      .maybeSingle()
+  for (const page of pages ?? []) {
+    const zernioAccountId = page.zernio_account_id!
 
-    if (existing) { skipped++; continue }
+    // Fetch all conversations from Zernio for this page
+    const conversations = await fetchZernioConversations(zernioAccountId)
+    logger.info({ pageId: page.id, count: conversations.length }, 'Fetched Zernio conversations')
 
-    // Try to find the last comment from this contact for message text
-    const { data: lastComment } = await db
-      .from('comments_log')
-      .select('comment_text, ai_reply, created_at')
-      .eq('page_id', contact.page_id)
-      .eq('commenter_id', contact.platform_user_id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    for (const conv of conversations) {
+      const participantId = conv.participantId
+      const participantName = conv.participantName
+      const lastAt = conv.updatedTime ?? new Date().toISOString()
 
-    const nowIso = lastComment?.created_at ?? contact.last_seen_at ?? new Date().toISOString()
+      // Upsert thread
+      const { data: thread, error: tErr } = await db
+        .from('messenger_threads')
+        .upsert(
+          {
+            page_id: page.id,
+            user_id: page.user_id,
+            sender_id: participantId,
+            sender_name: participantName || null,
+            last_message_at: lastAt,
+            unread_count: conv.unreadCount ?? 0,
+            status: 'open',
+          },
+          { onConflict: 'page_id,sender_id' }
+        )
+        .select('id')
+        .single()
 
-    const { data: thread, error: tErr } = await db
-      .from('messenger_threads')
-      .insert({
-        page_id: contact.page_id,
-        user_id: contact.user_id,
-        sender_id: contact.platform_user_id,
-        sender_name: contact.name || null,
-        last_message_at: nowIso,
-        unread_count: 0,
-        status: 'open',
-      })
-      .select('id')
-      .single()
-
-    if (tErr) {
-      logger.warn({ err: tErr.message, contactId: contact.id }, 'Backfill thread insert failed')
-      continue
-    }
-
-    // Seed the comment and AI reply as messages
-    if (lastComment && thread?.id) {
-      if (lastComment.comment_text) {
-        await db.from('messenger_messages').upsert({
-          thread_id: thread.id,
-          fb_message_id: `backfill-comment-${contact.platform_user_id}-${contact.page_id}`,
-          direction: 'inbound',
-          text: lastComment.comment_text,
-          sent_at: lastComment.created_at,
-        }, { onConflict: 'fb_message_id', ignoreDuplicates: true })
+      if (tErr || !thread) {
+        logger.warn({ err: tErr?.message, participantId }, 'Backfill thread upsert failed')
+        skipped++
+        continue
       }
-      if (lastComment.ai_reply) {
-        await db.from('messenger_messages').insert({
+
+      // Fetch and sync messages from Zernio
+      const messages = await fetchZernioMessages(participantId, zernioAccountId, 100)
+      if (messages.length > 0) {
+        const rows = messages.map((m) => ({
           thread_id: thread.id,
-          direction: 'outbound',
-          text: lastComment.ai_reply,
-          sent_by_label: 'ai',
-          sent_at: lastComment.created_at,
-        })
+          fb_message_id: m.id,
+          direction: m.direction === 'incoming' ? 'inbound' : 'outbound',
+          text: m.message,
+          sent_by_label: m.direction === 'outgoing'
+            ? (m.sentVia === 'ai' || (m as any).metadata?.sentVia === 'ai' ? 'ai' : 'human')
+            : null,
+          sent_at: m.sentAt || m.createdAt,
+        }))
+        const { error: msgErr } = await db
+          .from('messenger_messages')
+          .upsert(rows, { onConflict: 'fb_message_id', ignoreDuplicates: true })
+
+        if (msgErr) {
+          logger.warn({ err: msgErr.message, threadId: thread.id }, 'Backfill message upsert failed')
+        } else {
+          synced += rows.length
+        }
+        created++
+      } else {
+        created++
       }
     }
-
-    created++
   }
 
-  logger.info({ created, skipped }, 'Inbox backfill complete')
-  return NextResponse.json({ ok: true, created, skipped })
+  logger.info({ created, synced, skipped }, 'Inbox backfill from Zernio complete')
+  return NextResponse.json({ ok: true, conversations: created, messages: synced, skipped })
 }

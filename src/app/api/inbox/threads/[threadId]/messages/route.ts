@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { sendZernioConversationMessage } from '@/lib/zernio/client'
+import { sendZernioConversationMessage, fetchZernioMessages } from '@/lib/zernio/client'
 
 async function verifyThreadAccess(threadId: string, userId: string) {
   const adminDb = getAdminClient() as any
@@ -66,6 +66,25 @@ export async function GET(
 
     if (accessErr || !thread) {
       return NextResponse.json({ error: accessErr }, { status: accessStatus })
+    }
+
+    // Auto-sync messages from Zernio before returning (fills gaps from missed webhooks)
+    const page = thread.page
+    if (page?.zernio_account_id && thread.sender_id) {
+      const zernioMsgs = await fetchZernioMessages(thread.sender_id, page.zernio_account_id, 100)
+      if (zernioMsgs.length > 0) {
+        const rows = zernioMsgs.map((m) => ({
+          thread_id: threadId,
+          fb_message_id: m.id,
+          direction: m.direction === 'incoming' ? 'inbound' : 'outbound',
+          text: m.message,
+          sent_by_label: m.direction === 'outgoing'
+            ? (m.sentVia === 'ai' || m.metadata?.sentVia === 'ai' ? 'ai' : 'human')
+            : null,
+          sent_at: m.sentAt || m.createdAt,
+        }))
+        await adminDb.from('messenger_messages').upsert(rows, { onConflict: 'fb_message_id', ignoreDuplicates: true })
+      }
     }
 
     const { data: messages, error } = await adminDb

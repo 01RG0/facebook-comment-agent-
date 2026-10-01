@@ -322,3 +322,54 @@ export async function deleteZernioComment(platformPostId: string, commentId: str
     method: 'DELETE',
   })
 }
+
+export interface ZernioMessage {
+  id: string
+  conversationId: string
+  accountId: string
+  platform: string
+  message: string
+  senderId: string
+  senderName: string
+  direction: 'incoming' | 'outgoing'
+  sentAt: string
+  createdAt: string
+  sentVia?: string | null
+  metadata?: { sentVia?: string } | null
+}
+
+export interface ZernioConversation {
+  id: string
+  accountId: string
+  participantId: string
+  participantName: string
+  participantPicture?: string | null
+  lastMessage?: string | null
+  updatedTime?: string | null
+  status: string
+  unreadCount: number
+}
+
+export async function fetchZernioMessages(participantId: string, zernioAccountId: string, limit = 50): Promise<ZernioMessage[]> {
+  try {
+    const params = new URLSearchParams({ accountId: zernioAccountId, limit: String(limit) })
+    const res = await zernioFetch(`/inbox/conversations/${encodeURIComponent(participantId)}/messages?${params}`)
+    const data = await res.json()
+    return data.messages ?? []
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, participantId }, 'fetchZernioMessages failed')
+    return []
+  }
+}
+
+export async function fetchZernioConversations(zernioAccountId: string, limit = 100): Promise<ZernioConversation[]> {
+  try {
+    const params = new URLSearchParams({ accountId: zernioAccountId, limit: String(limit) })
+    const res = await zernioFetch(`/inbox/conversations?${params}`)
+    const data = await res.json()
+    return data.data ?? []
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, zernioAccountId }, 'fetchZernioConversations failed')
+    return []
+  }
+}
