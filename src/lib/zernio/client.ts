@@ -46,6 +46,16 @@ export async function getConnectUrl(
   return res.json()
 }
 
+export async function getZernioAccount(accountId: string): Promise<{ name?: string; picture?: string; username?: string } | null> {
+  try {
+    const res = await zernioFetch(`/accounts/${encodeURIComponent(accountId)}`)
+    const data = await res.json()
+    return data?.account ?? data ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function disconnectAccount(accountId: string): Promise<void> {
   try {
     await zernioFetch(`/accounts/${accountId}`, {

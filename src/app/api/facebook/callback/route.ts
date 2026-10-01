@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getZernioAccount } from '@/lib/zernio/client'
 import { logger } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
@@ -104,6 +105,13 @@ export async function GET(req: NextRequest) {
     if (!page) {
       logger.error({ accountId }, 'Page is null after upsert — unexpected state')
       return NextResponse.redirect(`${appUrl}/dashboard?error=callback_failed`)
+    }
+
+    // 5b. Try to fetch and store the page profile picture from Zernio
+    const accountInfo = await getZernioAccount(accountId)
+    const pictureUrl = accountInfo?.picture ?? null
+    if (pictureUrl) {
+      await db.from('pages').update({ page_picture_url: pictureUrl }).eq('id', page.id)
     }
 
     // 6. Create default settings row for new pages (insert if not exists)

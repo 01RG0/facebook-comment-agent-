@@ -176,7 +176,11 @@ export default function CommentsClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'hide', platformPostId: selectedPost.id, accountId: selectedPost.zernio_account_id }),
       })
-      if (!res.ok) throw new Error((await res.json()).error)
+      const data = await res.json()
+      if (!res.ok) {
+        if (res.status === 422) { toast.warning(data.error || 'Already hidden'); return }
+        throw new Error(data.error)
+      }
       toast.success('Comment hidden')
       setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isHidden: true } : c))
     } catch (err: any) { toast.error(err?.message || 'Failed to hide') }
@@ -191,7 +195,11 @@ export default function CommentsClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, platformPostId: selectedPost.id, accountId: selectedPost.zernio_account_id }),
       })
-      if (!res.ok) throw new Error((await res.json()).error)
+      const data = await res.json()
+      if (!res.ok) {
+        if (res.status === 422) { toast.warning(data.error || 'Already done'); return }
+        throw new Error(data.error)
+      }
       setComments(prev => prev.map(c => c.id === comment.id ? { ...c, isLiked: !c.isLiked } : c))
     } catch (err: any) { toast.error(err?.message || `Failed to ${action}`) }
   }

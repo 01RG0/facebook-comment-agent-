@@ -81,16 +81,17 @@ export async function GET(req: NextRequest) {
           }
           const items: any[] = Array.isArray(data?.data) ? data.data : []
           for (const item of items) {
+            logger.debug({ item }, 'Zernio post item fields')
             posts.push({
-              id: String(item.id),
+              id: String(item.id ?? item._id),
               accountId: String(item.accountId ?? page.zernio_account_id),
               accountUsername: item.accountUsername ?? page.page_name,
-              caption: item.content ?? item.caption ?? '',
-              picture: item.picture ?? null,
-              commentCount: item.commentCount ?? 0,
-              likeCount: item.likeCount ?? 0,
-              createdTime: item.createdTime,
-              permalink: item.permalink ?? null,
+              caption: item.message ?? item.text ?? item.content ?? item.caption ?? item.story ?? '',
+              picture: item.picture ?? item.image ?? item.thumbnail ?? item.fullPicture ?? item.media?.image?.src ?? item.attachments?.[0]?.media?.image?.src ?? null,
+              commentCount: item.commentCount ?? item.comments?.count ?? item.comments_count ?? 0,
+              likeCount: item.likeCount ?? item.likes?.count ?? item.reactions_count ?? 0,
+              createdTime: item.createdTime ?? item.created_time ?? item.timestamp,
+              permalink: item.permalink ?? item.link ?? item.url ?? item.permalinkUrl ?? item.postUrl ?? null,
               page_id: page.id,
               page_name: page.page_name,
               zernio_account_id: page.zernio_account_id,

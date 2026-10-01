@@ -1,6 +1,7 @@
 import { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getZernioAccount } from '@/lib/zernio/client'
 import PagesList from '@/components/pages-list'
 import ConnectFacebookBtn from '@/components/connect-facebook-btn'
 
@@ -11,10 +12,27 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const { data: pages } = await supabase
+  const { data: rawPages } = await supabase
     .from('pages')
-    .select('id, fb_page_id, page_name, page_picture_url, agent_enabled, webhook_subscribed, created_at')
+    .select('id, fb_page_id, page_name, page_picture_url, agent_enabled, webhook_subscribed, created_at, zernio_account_id')
     .order('created_at', { ascending: false })
+
+  // Backfill missing picture URLs for existing pages
+  if (rawPages) {
+    await Promise.allSettled(
+      rawPages
+        .filter((p: any) => !p.page_picture_url && p.zernio_account_id)
+        .map(async (p: any) => {
+          const info = await getZernioAccount(p.zernio_account_id)
+          if (info?.picture) {
+            await (supabase as any).from('pages').update({ page_picture_url: info.picture }).eq('id', p.id)
+            p.page_picture_url = info.picture
+          }
+        })
+    )
+  }
+
+  const pages = rawPages
 
   // Team members own no pages — send them straight to the handoff queue
   if (!pages || pages.length === 0) {

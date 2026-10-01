@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import DashboardNav from '@/components/dashboard-nav'
 
@@ -7,10 +8,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const [profileResult, teamMemberResult] = await Promise.all([
-    supabase.from('profiles').select('full_name, email, avatar_url, is_admin').eq('id', user.id).single(),
-    supabase.from('team_members').select('id, role').eq('member_id', user.id),
-  ])
+  const fetchLayoutData = unstable_cache(
+    async (userId: string) => {
+      const [profileResult, teamMemberResult] = await Promise.all([
+        supabase.from('profiles').select('full_name, email, avatar_url, is_admin').eq('id', userId).single(),
+        supabase.from('team_members').select('id, role').eq('member_id', userId),
+      ])
+      return { profileResult, teamMemberResult }
+    },
+    ['dashboard-layout'],
+    { revalidate: 60 }
+  )
+
+  const { profileResult, teamMemberResult } = await fetchLayoutData(user.id)
 
   const teamMemberships = teamMemberResult.data ?? []
   const isTeamMember = teamMemberships.length > 0

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
   sendZernioPublicReply,
-  sendZernioConversationMessage,
+  sendZernioPrivateReply,
   hideZernioComment,
   unhideZernioComment,
   likeZernioComment,
@@ -68,10 +68,11 @@ export async function POST(
         break
       }
       case 'dm': {
-        if (!recipientId || !message) {
-          return NextResponse.json({ error: 'recipientId and message required for dm' }, { status: 400 })
+        if (!platformPostId || !message) {
+          return NextResponse.json({ error: 'platformPostId and message required for dm' }, { status: 400 })
         }
-        await sendZernioConversationMessage(recipientId, accountId, message)
+        // Send as private reply to the comment — creates/opens a Messenger thread with the commenter
+        await sendZernioPrivateReply(platformPostId, id, accountId, message)
         break
       }
       case 'hide': {
@@ -115,7 +116,14 @@ export async function POST(
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
-    logger.error({ err: err?.message }, 'Error in POST /api/comments/[id]')
-    return NextResponse.json({ error: err?.message || 'Internal Server Error' }, { status: 500 })
+    const msg = err?.message || 'Internal Server Error'
+    // Facebook platform errors that are non-critical (e.g., already hidden, already liked)
+    const isPlatformWarning = msg.includes('platform_error') || msg.includes('Platform error')
+    if (isPlatformWarning) {
+      logger.warn({ err: msg }, 'Zernio platform warning in POST /api/comments/[id]')
+      return NextResponse.json({ error: msg, warning: true }, { status: 422 })
+    }
+    logger.error({ err: msg }, 'Error in POST /api/comments/[id]')
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
