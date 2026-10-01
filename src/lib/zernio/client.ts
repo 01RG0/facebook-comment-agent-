@@ -48,9 +48,16 @@ export async function getConnectUrl(
 
 export async function getZernioAccount(accountId: string): Promise<{ name?: string; picture?: string; username?: string } | null> {
   try {
-    const res = await zernioFetch(`/accounts/${encodeURIComponent(accountId)}`)
+    const res = await zernioFetch('/accounts')
     const data = await res.json()
-    return data?.account ?? data ?? null
+    const accounts: any[] = data?.accounts ?? []
+    const account = accounts.find((a: any) => a._id === accountId)
+    if (!account) return null
+    return {
+      name: account.displayName ?? account.username,
+      picture: account.profilePicture ?? null,
+      username: account.username,
+    }
   } catch {
     return null
   }
