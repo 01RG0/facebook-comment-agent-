@@ -63,10 +63,15 @@ export async function POST(req: NextRequest) {
     const msgObj = typeof payload.message === 'object' && payload.message !== null ? payload.message : {}
     const convObj = typeof payload.conversation === 'object' && payload.conversation !== null ? payload.conversation : {}
     const fromObj = payload.from || msgObj.from || msgObj.sender || payload.sender || {}
-    const accountId = payload.account?.id || payload.accountId || payload.zernio_account_id || msgObj.accountId || ''
+    const accountId = payload.account?.id || payload.accountId || payload.zernio_account_id ||
+      payload.channel?.id || payload.inbox?.id || msgObj.accountId || ''
 
     // For conversation threads, senderId must be the customer (participantId), not the page/account ID
-    let senderId = String(convObj.participantId || convObj.id || fromObj.id || msgObj.sender_id || msgObj.senderId || payload.sender_id || '')
+    let senderId = String(
+      convObj.participantId || convObj.id || fromObj.id ||
+      payload.sender?.id || payload.contact?.id ||
+      msgObj.sender_id || msgObj.senderId || payload.sender_id || ''
+    )
     if (senderId === accountId && convObj.participantId) {
       senderId = String(convObj.participantId)
     }
@@ -83,7 +88,7 @@ export async function POST(req: NextRequest) {
     )
 
     if (!senderId) {
-      logger.warn({ payload }, 'Zernio message event missing senderId')
+      logger.warn({ fullPayload: payload, eventType }, 'PAYLOAD_DUMP: senderId missing from Zernio message event')
       return NextResponse.json({ error: 'Missing sender ID' }, { status: 400 })
     }
 
@@ -183,19 +188,17 @@ export async function POST(req: NextRequest) {
     }
     insertedMsgId = insertedMsg?.id
 
-    // 5. If page.agent_enabled: process DM with error capture
-    if (page.agent_enabled) {
-      processDmJob({
-        threadId: thread.id,
-        pageId: page.id,
-        senderId,
-        senderName,
-        message: messageText,
-      }).catch(err => {
-        logger.error({ err: err?.message, threadId: thread.id, pageId: page.id }, 'DM job unhandled error')
-      })
-      logger.info({ threadId: thread.id, pageId: page.id }, 'DM processing started')
-    }
+    // 5. Always fire processDmJob — dm-worker checks agent_enabled + dm_agent_enabled itself
+    processDmJob({
+      threadId: thread.id,
+      pageId: page.id,
+      senderId,
+      senderName,
+      message: messageText,
+    }).catch(err => {
+      logger.error({ err: err?.message, threadId: thread.id, pageId: page.id }, 'DM job unhandled error')
+    })
+    logger.info({ threadId: thread.id, pageId: page.id }, 'DM processing started')
 
     // 6. Return NextResponse.json({ ok: true }) with status 200
     return NextResponse.json({ ok: true }, { status: 200 })
