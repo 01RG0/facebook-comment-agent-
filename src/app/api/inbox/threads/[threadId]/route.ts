@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { fetchZernioMessages } from '@/lib/zernio/client'
 
 async function verifyThreadAccess(threadId: string, userId: string) {
   const adminDb = getAdminClient() as any
@@ -73,26 +72,7 @@ export async function GET(
       adminDb.from('messenger_threads').update({ unread_count: 0 }).eq('id', threadId).then(() => {})
     }
 
-    // Sync messages from Zernio before reading from DB (fills webhook gaps)
-    const page = thread.page
-    if (page?.zernio_account_id && thread.sender_id) {
-      try {
-        const zernioMsgs = await fetchZernioMessages(thread.sender_id, page.zernio_account_id, 100)
-        if (zernioMsgs.length > 0) {
-          const rows = zernioMsgs.map((m: any) => ({
-            thread_id: threadId,
-            fb_message_id: m.id,
-            direction: m.direction === 'incoming' ? 'inbound' : 'outbound',
-            text: m.message,
-            sent_by_label: m.direction === 'outgoing'
-              ? (m.sentVia === 'ai' || m.metadata?.sentVia === 'ai' ? 'ai' : 'human')
-              : null,
-            sent_at: m.sentAt || m.createdAt,
-          }))
-          await adminDb.from('messenger_messages').upsert(rows, { onConflict: 'fb_message_id', ignoreDuplicates: true })
-        }
-      } catch (_) {}
-    }
+    // Zernio sync removed from here — handled by auto-sync endpoint polled from client
 
     // Parallel fetch messages, notes, events, assigned profile
     const [messagesRes, notesRes, eventsRes, assignedProfileRes] = await Promise.all([

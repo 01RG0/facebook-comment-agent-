@@ -135,7 +135,7 @@ export default function MessengerInboxPage() {
     mutate: mutateThreads,
   } = useSWR<{ threads: MessengerThread[]; count: number }>(threadsQuery, fetcher, {
     revalidateOnFocus: true,
-    refreshInterval: 10000,
+    refreshInterval: 1000,
   })
 
   const threads = useMemo(() => threadsData?.threads ?? [], [threadsData])
@@ -163,15 +163,16 @@ export default function MessengerInboxPage() {
     }
   }, [mutateThreads])
 
-  // Background auto-sync: polls Zernio every 15s to catch messages missed by webhooks
+  // Background auto-sync: polls Zernio every 5s to catch messages missed by webhooks
   useEffect(() => {
     const sync = () => fetch('/api/inbox/auto-sync', { method: 'POST' }).then(r => r.json()).catch(() => {})
     sync() // immediate sync on mount
     const interval = setInterval(() => {
       sync().then(() => mutateThreads())
-    }, 15000)
+    }, 5000)
     return () => clearInterval(interval)
   }, [mutateThreads])
+
 
   // Selected thread data
   const selectedThreadSummary = useMemo(
@@ -193,6 +194,22 @@ export default function MessengerInboxPage() {
   >(threadDetailUrl, fetcher, {
     revalidateOnFocus: true,
   })
+
+  // Realtime subscription on messenger_messages — instant update when a new message lands
+  useEffect(() => {
+    if (!selectedThreadId) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`messenger_messages:${selectedThreadId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'messenger_messages',
+        filter: `thread_id=eq.${selectedThreadId}`,
+      }, () => { mutateThreadDetail() })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [selectedThreadId, mutateThreadDetail])
 
   // Fetch Team members for assigned agent dropdown
   const teamUrl = useMemo(() => {
