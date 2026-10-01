@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import useSWR from 'swr'
 import { formatDistanceToNow, format } from 'date-fns'
 import {
@@ -20,7 +20,9 @@ import {
   ChevronLeft,
   Building2,
   Filter,
-  X
+  X,
+  Paperclip,
+  FileText,
 } from 'lucide-react'
 
 import { createClient } from '@/lib/supabase/client'
@@ -74,6 +76,9 @@ export default function MessengerInboxPage() {
   // Forms state
   const [replyText, setReplyText] = useState('')
   const [isSendingReply, setIsSendingReply] = useState(false)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [isUploadingFile, setIsUploadingFile] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [isNoteOpen, setIsNoteOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [isSavingNote, setIsSavingNote] = useState(false)
@@ -235,6 +240,27 @@ export default function MessengerInboxPage() {
       setIsSendingReply(false)
     }
   }
+
+  const handleSendAttachment = useCallback(async (file: File) => {
+    if (!selectedThreadId || isUploadingFile) return
+    setIsUploadingFile(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/inbox/threads/${selectedThreadId}/attachments`, { method: 'POST', body: fd })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Upload failed')
+      }
+      setPendingFile(null)
+      toast.success('Attachment sent')
+      await Promise.all([mutateThreadDetail(), mutateThreads()])
+    } catch (err: any) {
+      toast.error(err.message || 'Could not send attachment')
+    } finally {
+      setIsUploadingFile(false)
+    }
+  }, [selectedThreadId, isUploadingFile, mutateThreadDetail, mutateThreads])
 
   const handleAddNote = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -843,7 +869,21 @@ export default function MessengerInboxPage() {
                                 : 'bg-blue-700 text-white dark:bg-blue-600 rounded-2xl rounded-tr-sm'
                             )}
                           >
-                            {msg.text}
+                            {(msg as any).attachment_url ? (
+                              (msg as any).attachment_type?.startsWith('image/') ? (
+                                <a href={(msg as any).attachment_url} target="_blank" rel="noopener noreferrer">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={(msg as any).attachment_url} alt={(msg as any).attachment_name || 'attachment'}
+                                    className="max-w-[220px] max-h-[200px] rounded-lg object-cover" />
+                                </a>
+                              ) : (
+                                <a href={(msg as any).attachment_url} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-2 underline underline-offset-2">
+                                  <FileText className="h-4 w-4 shrink-0" />
+                                  {(msg as any).attachment_name || 'Download file'}
+                                </a>
+                              )
+                            ) : msg.text}
                           </div>
 
                           {/* Footer with sent time and sender label (only show on last message of group or always with relative time) */}
@@ -994,6 +1034,17 @@ export default function MessengerInboxPage() {
 
               {/* Reply Input: textarea with padding & focus ring, character count below, full blue send button */}
               <form onSubmit={handleSendReply} className="space-y-2">
+                {/* Pending file chip */}
+                {pendingFile && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <FileText className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                    <span className="text-xs text-blue-700 dark:text-blue-300 truncate flex-1">{pendingFile.name}</span>
+                    <button type="button" onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                      className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-200">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
                 <div className="relative rounded-lg border border-gray-200 bg-white shadow-sm transition-all focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900">
                   <Textarea
                     value={replyText}
@@ -1009,26 +1060,61 @@ export default function MessengerInboxPage() {
                     className="w-full resize-none border-0 bg-transparent p-3 text-xs leading-relaxed focus-visible:ring-0 focus-visible:outline-none dark:text-gray-100 placeholder:text-gray-400"
                   />
                   <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2 dark:border-gray-800">
-                    {/* Character count below textarea */}
-                    <span className="text-[11px] text-gray-400 font-mono">
-                      {replyText.length} characters
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {/* Character count */}
+                      <span className="text-[11px] text-gray-400 font-mono">
+                        {replyText.length} chars
+                      </span>
+                      {/* Paperclip attachment button */}
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingFile}
+                        className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors disabled:opacity-50"
+                        title="Attach file"
+                      >
+                        {isUploadingFile ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*,.pdf,.doc,.docx"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          if (f) setPendingFile(f)
+                        }}
+                      />
+                    </div>
 
-                    {/* Send button: full blue, with Send icon, disabled when empty */}
-                    <Button
-                      type="submit"
-                      disabled={!replyText.trim() || isSendingReply}
-                      className="h-8 px-4 bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-300 dark:disabled:bg-blue-900/50 shrink-0 gap-1.5 text-xs font-semibold shadow-sm transition-colors"
-                    >
-                      {isSendingReply ? (
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <>
-                          <Send className="h-3.5 w-3.5" />
-                          Send
-                        </>
+                    <div className="flex items-center gap-2">
+                      {/* Send attachment button (shown when file pending) */}
+                      {pendingFile && (
+                        <Button
+                          type="button"
+                          onClick={() => handleSendAttachment(pendingFile)}
+                          disabled={isUploadingFile}
+                          className="h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-300 dark:disabled:bg-blue-900/50 shrink-0 gap-1.5 text-xs font-semibold shadow-sm transition-colors"
+                        >
+                          {isUploadingFile ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <><Paperclip className="h-3.5 w-3.5" /> Send File</>}
+                        </Button>
                       )}
-                    </Button>
+                      {/* Send text button */}
+                      <Button
+                        type="submit"
+                        disabled={!replyText.trim() || isSendingReply}
+                        className="h-8 px-4 bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-300 dark:disabled:bg-blue-900/50 shrink-0 gap-1.5 text-xs font-semibold shadow-sm transition-colors"
+                      >
+                        {isSendingReply ? (
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <>
+                            <Send className="h-3.5 w-3.5" />
+                            Send
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </form>
