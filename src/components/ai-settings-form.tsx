@@ -656,27 +656,46 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
                 description="Flag public comments for manual review instead of posting an automated public reply" />
               {form.public_comment_reply_enabled && (
                 <div className="space-y-3">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">What to post publicly</label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      'Details have been sent to your inbox 📩',
-                      'Check your inbox! 📬',
-                      "We've sent you the details privately 💌",
-                      'تم إرسال التفاصيل برايفت 📩',
-                      'تفقد رسائلك الخاصة 📬',
-                    ].map(preset => (
-                      <button key={preset} type="button" onClick={() => set({ public_comment_reply_text: preset })}
-                        className={`px-3 py-1.5 text-xs rounded-full border transition font-medium ${form.public_comment_reply_text === preset
-                          ? 'bg-blue-600 border-blue-600 text-white'
-                          : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-blue-400'}`}>
-                        {preset}
+                  {/* Mode toggle */}
+                  <div className="flex gap-2">
+                    {(['static', 'ai'] as const).map(mode => (
+                      <button key={mode} type="button"
+                        onClick={() => set({ public_comment_reply_mode: mode })}
+                        className={`px-4 py-1.5 text-xs rounded-full border font-medium transition ${form.public_comment_reply_mode === mode ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-blue-400'}`}>
+                        {mode === 'static' ? '📝 Fixed text' : '🤖 AI generated'}
                       </button>
                     ))}
                   </div>
-                  <input type="text" value={form.public_comment_reply_text ?? ''} onChange={e => set({ public_comment_reply_text: e.target.value })}
-                    placeholder="Or type your own message..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <p className="text-xs text-gray-400">Click a preset to use it, or type your own.</p>
+
+                  {form.public_comment_reply_mode === 'ai' ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">AI writes a short contextual public reply based on the comment. You can give it extra instructions below.</p>
+                      <textarea value={form.public_comment_ai_instructions ?? ''} onChange={e => set({ public_comment_ai_instructions: e.target.value })}
+                        placeholder="Optional: extra instructions for the public reply (e.g. 'keep it under 10 words, always in Arabic')"
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          'Details have been sent to your inbox 📩',
+                          'Check your inbox! 📬',
+                          "We've sent you the details privately 💌",
+                          'تم إرسال التفاصيل برايفت 📩',
+                          'تفقد رسائلك الخاصة 📬',
+                        ].map(preset => (
+                          <button key={preset} type="button" onClick={() => set({ public_comment_reply_text: preset })}
+                            className={`px-3 py-1.5 text-xs rounded-full border transition font-medium ${form.public_comment_reply_text === preset ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-blue-400'}`}>
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                      <input type="text" value={form.public_comment_reply_text ?? ''} onChange={e => set({ public_comment_reply_text: e.target.value })}
+                        placeholder="Or type your own message..."
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
