@@ -32,6 +32,21 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
     if (pageErr || !page) { log.warn({ pageId }, 'Page not found, skipping DM'); return }
     if (!page.agent_enabled) { log.info('Agent disabled, skipping DM'); return }
 
+    // Dedup: skip if an outbound AI reply was already sent in the last 30s (race condition guard)
+    const { data: recentOutbound } = await db
+      .from('messenger_messages')
+      .select('id')
+      .eq('thread_id', threadId)
+      .eq('direction', 'outbound')
+      .eq('sent_by_label', 'ai')
+      .gte('sent_at', new Date(Date.now() - 30000).toISOString())
+      .limit(1)
+      .maybeSingle()
+    if (recentOutbound) {
+      log.info('AI already replied to this thread in the last 30s, skipping duplicate')
+      return
+    }
+
     const { data: settings } = await db
       .from('settings')
       .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_ids, reply_instructions, reply_language, review_mode_enabled, dm_agent_enabled, dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length, dm_ai_provider, dm_ai_model, dm_preferred_key_id')
