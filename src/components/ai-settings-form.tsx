@@ -373,7 +373,7 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
       custom_base_url: f.custom_base_url || null,
       reply_instructions: instructions,
       reply_language: f.reply_language,
-      reply_tone: f.reply_tone === 'custom' ? f.custom_tone_text.trim() || 'friendly' : f.reply_tone,
+      reply_tone: (f.reply_tone === 'custom' ? f.custom_tone_text : f.reply_tone)?.trim() || 'friendly',
       reply_length: f.reply_length,
       reply_delay_seconds: f.reply_delay_seconds,
       max_replies_per_hour: f.max_replies_per_hour,
@@ -611,39 +611,26 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
           <Section icon={<MessageSquare className="w-5 h-5" />} title="Reply Style" description="How the AI sounds when it replies">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tone</label>
-                <ButtonGroup value={form.reply_tone ?? 'friendly'} onChange={v => set({ reply_tone: v })}
-                  options={[
-                    { value: 'friendly', label: 'Friendly 😊' },
-                    { value: 'professional', label: 'Professional' },
-                    { value: 'formal', label: 'Formal' },
-                    { value: 'casual', label: 'Casual' },
-                    { value: 'custom', label: '✏️ Custom' },
-                  ]}
-                />
-                {form.reply_tone === 'custom' && (
-                  <div className="mt-3">
-                    <input type="text" value={form.custom_tone_text} onChange={e => set({ custom_tone_text: e.target.value })}
-                      placeholder='e.g. "warm and empathetic", "concise and direct", "enthusiastic salesperson"'
-                      className="w-full px-3 py-2 border border-blue-300 dark:border-blue-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <p className="text-xs text-gray-400 mt-1">Describe the tone in your own words — the AI will follow it.</p>
-                  </div>
-                )}
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tone</label>
+                <input type="text"
+                  value={form.reply_tone === 'custom' ? form.custom_tone_text : (form.reply_tone ?? '')}
+                  onChange={e => set({ reply_tone: 'custom', custom_tone_text: e.target.value })}
+                  placeholder='e.g. ودي ومحترم، أو "warm and empathetic"، أو مباشر وسريع'
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply length</label>
+                <input type="text"
+                  value={form.reply_length ?? ''}
+                  onChange={e => set({ reply_length: e.target.value })}
+                  placeholder='e.g. short and punchy, 2-3 sentences max, detailed with examples'
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+
               <Toggle checked={form.human_handoff_enabled} onChange={v => set({ human_handoff_enabled: v })}
                 label="🙋 Human handoff"
                 description="When the AI isn't confident, flag the conversation so you can respond manually" />
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Reply length</label>
-                <ButtonGroup value={form.reply_length ?? 'medium'} onChange={v => set({ reply_length: v })}
-                  options={[
-                    { value: 'short', label: 'Short' },
-                    { value: 'medium', label: 'Medium' },
-                    { value: 'long', label: 'Detailed' },
-                  ]}
-                />
-              </div>
             </div>
           </Section>
 
@@ -882,29 +869,25 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
 
               {/* DM Style */}
               <Section icon={<Globe className="w-5 h-5" />} title="DM Reply Style" description="Language and tone for DM replies">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Language</label>
                     <select value={form.dm_reply_language} onChange={e => set({ dm_reply_language: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      className="w-full sm:w-64 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                       {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tone</label>
-                    <select value={form.dm_reply_tone} onChange={e => set({ dm_reply_tone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      {PRESET_TONES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                    </select>
+                    <input type="text" value={form.dm_reply_tone} onChange={e => set({ dm_reply_tone: e.target.value })}
+                      placeholder='e.g. ودي ومحترم، أو conversational and helpful'
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Length</label>
-                    <select value={form.dm_reply_length} onChange={e => set({ dm_reply_length: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="short">Short</option>
-                      <option value="medium">Medium</option>
-                      <option value="long">Long</option>
-                    </select>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Reply length</label>
+                    <input type="text" value={form.dm_reply_length} onChange={e => set({ dm_reply_length: e.target.value })}
+                      placeholder='e.g. 2-3 sentences, detailed with examples'
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
               </Section>
