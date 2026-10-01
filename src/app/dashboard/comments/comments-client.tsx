@@ -1,12 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/client'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient()
 import { formatDistanceToNow } from 'date-fns'
 import {
   MessageSquare, RefreshCw, ChevronLeft, Reply,
@@ -60,8 +57,9 @@ function timeAgo(t?: string) {
 
 export default function CommentsClient() {
   const [posts, setPosts] = useState<Post[]>([])
-  const [postsNextCursor, setPostsNextCursor] = useState<string | null>(null)
+  const [postsCursors, setPostsCursors] = useState<Record<string, string>>({})
   const [loadingMorePosts, setLoadingMorePosts] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
   const [commentsNextCursor, setCommentsNextCursor] = useState<string | null>(null)
@@ -90,42 +88,44 @@ export default function CommentsClient() {
   }, [])
 
   const loadPosts = useCallback(async () => {
-    // 1. Show cached posts instantly if fresh enough
+    // Show cache instantly (regardless of age) while refreshing in background
     try {
       const raw = localStorage.getItem(CACHE_KEY)
       if (raw) {
-        const { posts: cached, cursor, ts } = JSON.parse(raw)
-        if (Date.now() - ts < CACHE_TTL && Array.isArray(cached) && cached.length > 0) {
+        const { posts: cached, cursors: cachedCursors } = JSON.parse(raw)
+        if (Array.isArray(cached) && cached.length > 0) {
           setPosts(cached)
-          setPostsNextCursor(cursor ?? null)
+          setPostsCursors(cachedCursors && typeof cachedCursors === 'object' ? cachedCursors : {})
           setLoading(false)
         }
       }
     } catch {}
 
-    // 2. Always refresh from Zernio in background
+    setRefreshing(true)
     try {
       const res = await fetch('/api/comments')
       const json = await res.json()
       const fresh = json.posts ?? []
+      const freshCursors = json.cursors ?? {}
       setPosts(fresh)
-      setPostsNextCursor(json.nextCursor ?? null)
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ posts: fresh, cursor: json.nextCursor ?? null, ts: Date.now() })) } catch {}
+      setPostsCursors(freshCursors)
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ posts: fresh, cursors: freshCursors, ts: Date.now() })) } catch {}
     } catch {
       toast.error('Failed to load posts')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [])
 
   const loadMorePosts = async () => {
-    if (!postsNextCursor || loadingMorePosts) return
+    if (Object.keys(postsCursors).length === 0 || loadingMorePosts) return
     setLoadingMorePosts(true)
     try {
-      const res = await fetch(`/api/comments?cursor=${encodeURIComponent(postsNextCursor)}`)
+      const res = await fetch(`/api/comments?cursors=${encodeURIComponent(JSON.stringify(postsCursors))}`)
       const json = await res.json()
       setPosts(prev => [...prev, ...(json.posts ?? [])])
-      setPostsNextCursor(json.nextCursor ?? null)
+      setPostsCursors(json.cursors ?? {})
     } catch {
       toast.error('Failed to load more posts')
     } finally {
@@ -309,10 +309,13 @@ export default function CommentsClient() {
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold text-gray-900 dark:text-white">Posts</h2>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 font-medium">{posts.length}</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 font-medium flex items-center gap-1">
+              {posts.length}
+              {refreshing && <Loader2 className="w-3 h-3 animate-spin opacity-50" />}
+            </span>
           </div>
-          <button onClick={loadPosts} disabled={loading} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition">
-            <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
+          <button onClick={loadPosts} disabled={loading || refreshing} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition">
+            <RefreshCw className={cn('w-4 h-4', (loading || refreshing) && 'animate-spin')} />
           </button>
         </div>
 
@@ -379,7 +382,7 @@ export default function CommentsClient() {
               </div>
             </button>
           ))}
-          {postsNextCursor && (
+          {Object.keys(postsCursors).length > 0 && (
             <div className="pt-2 pb-1 text-center">
               <button
                 onClick={loadMorePosts}

@@ -19,6 +19,13 @@ export async function GET(req: NextRequest) {
     const accountId = searchParams.get('accountId')
     const cursor = searchParams.get('cursor') || undefined
 
+    // Per-account cursors map for posts pagination (replaces single cursor)
+    let cursorsIn: Record<string, string> = {}
+    const cursorsParam = searchParams.get('cursors')
+    if (cursorsParam) {
+      try { cursorsIn = JSON.parse(cursorsParam) } catch {}
+    }
+
     // If postId + accountId: return comments for that specific post
     if (postId && accountId) {
       // Verify user owns a page with this accountId
@@ -68,17 +75,16 @@ export async function GET(req: NextRequest) {
     if (pagesError) return NextResponse.json({ error: pagesError.message }, { status: 500 })
 
     const posts: any[] = []
-    let nextCursor: string | null = null
+    const cursorsOut: Record<string, string> = {}
 
     await Promise.all(
       (pages ?? []).map(async (page) => {
         if (!page.zernio_account_id) return
         try {
-          const data = await getZernioPosts(page.zernio_account_id, 50, cursor)
+          const accountCursor = cursorsIn[page.zernio_account_id] ?? cursor
+          const data = await getZernioPosts(page.zernio_account_id, 50, accountCursor)
           const cursorFound = data?.pagination?.nextCursor ?? data?.nextCursor ?? null
-          if (cursorFound) {
-            nextCursor = cursorFound
-          }
+          if (cursorFound) cursorsOut[page.zernio_account_id] = cursorFound
           const items: any[] = Array.isArray(data?.data) ? data.data : []
           for (const item of items) {
             logger.debug({ item }, 'Zernio post item fields')
@@ -103,7 +109,7 @@ export async function GET(req: NextRequest) {
       })
     )
 
-    return NextResponse.json({ posts, nextCursor })
+    return NextResponse.json({ posts, cursors: cursorsOut })
   } catch (err: any) {
     logger.error({ err: err?.message }, 'Unexpected error in GET /api/comments')
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

@@ -249,7 +249,7 @@ export default function PagesList({ initialPages }: Props) {
                 </div>
 
                 {/* Stats row */}
-                <div className="flex items-center gap-6 mt-5 pt-4 border-t border-gray-100 dark:border-gray-800">
+                <div className="flex items-center flex-wrap gap-6 gap-y-2 mt-5 pt-4 border-t border-gray-100 dark:border-gray-800">
                   <div className="text-center">
                     <p className="text-lg font-bold text-gray-900 dark:text-white leading-none">{totalReplies}</p>
                     <p className="text-xs text-gray-400 mt-1">total replies</p>

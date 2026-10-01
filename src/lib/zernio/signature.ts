@@ -11,7 +11,8 @@ export function verifyZernioSignature(
   if (!secret) throw new Error('ZERNIO_WEBHOOK_SECRET is not configured')
 
   const expected = createHmac('sha256', secret).update(rawBody).digest()
-  const received = Buffer.from(signatureHeader.trim(), 'hex')
+  const hex = signatureHeader.trim().replace(/^sha256=/i, '')
+  const received = Buffer.from(hex, 'hex')
 
   return hmacEqual(expected, received)
 }

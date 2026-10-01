@@ -19,6 +19,10 @@ export async function requireAdmin(): Promise<
     .single()
 
   if (!profile?.is_admin) {
+    // fallback: env-var admin check for fresh deployments where is_admin is never set
+    if (user.email && user.email === process.env.ADMIN_EMAIL) {
+      return { user: { id: user.id, email: user.email }, error: null }
+    }
     return { user: null, error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 

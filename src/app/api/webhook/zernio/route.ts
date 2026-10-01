@@ -44,18 +44,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, message: 'Test webhook received' }, { status: 200 })
   }
 
-  // ── Handle Messenger Direct Message (DM) Events ──
-  const isMessageEvent =
-    eventType === 'message' ||
-    eventType === 'message.received' ||
-    eventType === 'message.created' ||
-    eventType.startsWith('message') ||
-    !!payload.message
-
   // Ignore outbound message confirmations (e.g. message.sent) to prevent loop/error
   if (eventType === 'message.sent' || payload.message?.direction === 'outgoing') {
     return NextResponse.json({ ok: true, ignored: 'outgoing_message' }, { status: 200 })
   }
+
+  // ── Handle Messenger Direct Message (DM) Events ──
+  // Only treat explicit inbound message events as DMs — exclude receipt/status events
+  const isMessageEvent =
+    eventType === 'message' ||
+    eventType === 'message.received' ||
+    eventType === 'message.created' ||
+    !!payload.message
 
   // If this is an inbound message event and not a comment event
   if (isMessageEvent && eventType !== 'comment.received' && !payload.comment) {
@@ -183,14 +183,16 @@ export async function POST(req: NextRequest) {
     }
     insertedMsgId = insertedMsg?.id
 
-    // 5. If page.agent_enabled: process DM inline (fire-and-forget)
+    // 5. If page.agent_enabled: process DM with error capture
     if (page.agent_enabled) {
-      void processDmJob({
+      processDmJob({
         threadId: thread.id,
         pageId: page.id,
         senderId,
         senderName,
         message: messageText,
+      }).catch(err => {
+        logger.error({ err: err?.message, threadId: thread.id, pageId: page.id }, 'DM job unhandled error')
       })
       logger.info({ threadId: thread.id, pageId: page.id }, 'DM processing started')
     }
@@ -270,7 +272,19 @@ export async function POST(req: NextRequest) {
       message: payload.comment.text,
       createdTime: new Date(payload.comment.createdAt).getTime() / 1000,
     }
-    void processCommentJob(jobData)
+    const runCommentWithRetry = async (attempt = 0): Promise<void> => {
+      try {
+        await processCommentJob(jobData)
+      } catch (err) {
+        if (attempt < 2) {
+          logger.warn({ err: (err as Error).message, commentId: jobData.commentId, attempt: attempt + 1 }, 'Comment job failed, retrying')
+          await new Promise(r => setTimeout(r, (attempt + 1) * 2000))
+          return runCommentWithRetry(attempt + 1)
+        }
+        logger.error({ err: (err as Error).message, commentId: jobData.commentId }, 'Comment job exhausted all retries')
+      }
+    }
+    void runCommentWithRetry()
     logger.info({ commentId: payload.comment.id, pageId: page.id, commenter: payload.comment.author?.name, messagePreview: (payload.comment.text ?? '').slice(0, 80) }, 'Comment processing started')
 
     // Auto-save commenter as a contact (fire-and-forget, never block webhook response)
@@ -278,18 +292,11 @@ export async function POST(req: NextRequest) {
       const fromId = payload.comment?.from?.id || payload.comment?.author?.id || payload.from?.id
       const fromName = payload.comment?.from?.name || payload.comment?.author?.name || payload.from?.name || null
       const fromPicture = payload.comment?.from?.picture || payload.comment?.author?.picture || payload.from?.picture || null
-      const accountId = payload.account?.id || payload.accountId
 
-      const { data: pageRow } = await db
-        .from('pages')
-        .select('id, user_id')
-        .eq('zernio_account_id', accountId)
-        .maybeSingle()
-
-      if (pageRow && fromId) {
+      if (page && fromId) {
         await db.from('contacts').upsert({
-          user_id: pageRow.user_id,
-          page_id: pageRow.id,
+          user_id: page.user_id,
+          page_id: page.id,
           platform_user_id: String(fromId),
           platform: 'facebook',
           name: fromName || null,
@@ -298,10 +305,12 @@ export async function POST(req: NextRequest) {
         }, { onConflict: 'user_id,platform_user_id,platform' })
 
         await (db as any).rpc('increment_contact_count', {
-          p_user_id: pageRow.user_id,
+          p_user_id: page.user_id,
           p_platform_user_id: String(fromId),
           p_platform: 'facebook',
-        }).catch(() => {})
+        }).catch((rpcErr: any) => {
+          logger.warn({ rpcErr: rpcErr?.message }, 'increment_contact_count RPC failed')
+        })
       }
     } catch (contactErr) {
       logger.warn({ err: (contactErr as Error).message }, 'Failed to upsert contact (non-critical)')

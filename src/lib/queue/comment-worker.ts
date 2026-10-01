@@ -11,6 +11,7 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
       const jobStart = Date.now()
       log.info({ commenter: from.name, messagePreview: message.slice(0, 80) }, 'Comment job picked up by worker')
       const db = getAdminClient()
+      const today = new Date().toISOString().split('T')[0]
 
       // ── 1. Check idempotency (DB-level dedup) ──────────────────────────────
       const { data: existing } = await db
@@ -121,7 +122,6 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
       }
 
       if (limits?.max_requests_per_day || limits?.max_tokens_per_day) {
-        const today = new Date().toISOString().split('T')[0]
         const { data: dayBucket } = await db
           .from('usage_daily_buckets')
           .select('request_count, token_count')
@@ -207,7 +207,6 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
       }
 
       // ── 10. Resolve AI keys with fallback chain ───────────────────────────
-      const today = new Date().toISOString().split('T')[0]
       const thisMonth = new Date().toISOString().slice(0, 7)
 
       const { data: aiKeys } = await db
@@ -290,6 +289,14 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
         if (!aiResult) {
           const errMsg = lastErr?.message ?? 'All AI keys failed'
           await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'failed', errorMessage: errMsg })
+          try {
+            await db.from('dead_letter_comments').insert({
+              fb_comment_id: commentId,
+              page_id: pageId,
+              error_message: errMsg,
+              payload: data,
+            })
+          } catch {}
           throw new Error(errMsg)
         }
       } else {
@@ -341,6 +348,14 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
             success: false, errorMessage: errMsg, latencyMs: Date.now() - t0,
           })
           await upsertLog(db, { commentId, pageId, userId: page.user_id, postId, from, message, status: 'failed', errorMessage: errMsg })
+          try {
+            await db.from('dead_letter_comments').insert({
+              fb_comment_id: commentId,
+              page_id: pageId,
+              error_message: errMsg,
+              payload: data,
+            })
+          } catch {}
           throw aiErr
         }
       }

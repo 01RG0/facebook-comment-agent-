@@ -8,7 +8,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { data: { user }, error: authErr } = await supabase.auth.getUser()
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { direction } = await req.json() as { direction: 'up' | 'down' }
+  const { direction } = await req.json()
+  if (direction !== 'up' && direction !== 'down') {
+    return NextResponse.json({ error: 'direction must be "up" or "down"' }, { status: 400 })
+  }
 
   const { data: allKeys } = await supabase
     .from('ai_provider_keys')

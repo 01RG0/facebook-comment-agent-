@@ -65,14 +65,14 @@ export default function HandoffPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient()
-    const q = supabase
+    let q = supabase
       .from('handoff_queue')
       .select('id, fb_comment_id, commenter_name, comment_text, ai_draft, status, notes, created_at, pages(page_name)')
       .order('created_at', { ascending: false })
       .limit(50)
 
-    if (statusFilter === 'pending') q.eq('status', 'pending')
-    if (selectedPageId) q.eq('page_id', selectedPageId)
+    if (statusFilter === 'pending') q = q.eq('status', 'pending')
+    if (selectedPageId) q = q.eq('page_id', selectedPageId)
 
     const { data } = await q
     setItems((data ?? []) as unknown as HandoffItem[])

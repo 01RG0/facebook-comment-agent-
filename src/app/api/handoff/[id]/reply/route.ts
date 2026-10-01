@@ -11,7 +11,7 @@ export async function POST(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { reply_text } = await req.json()
+  const { reply_text, is_followup } = await req.json()
   if (!reply_text?.trim()) return NextResponse.json({ error: 'reply_text required' }, { status: 400 })
 
   // RLS allows both the page owner and reviewer/editor team members to read this row
@@ -22,7 +22,7 @@ export async function POST(
     .single()
 
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (item.status !== 'pending') return NextResponse.json({ error: 'Already handled' }, { status: 409 })
+  if (!is_followup && item.status !== 'pending') return NextResponse.json({ error: 'Already handled' }, { status: 409 })
 
   const db = getAdminClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,6 +43,9 @@ export async function POST(
     .maybeSingle()
 
   const platformPostId = logRow?.fb_post_id ?? ''
+  if (!platformPostId) {
+    return NextResponse.json({ error: 'Cannot find original post ID for this comment' }, { status: 422 })
+  }
 
   await sendZernioPrivateReply(
     platformPostId,
@@ -92,12 +95,13 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // RLS allows owner + reviewer/editor team members to update
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from('handoff_queue')
-    .update({ status: 'dismissed' })
+    .update({ status: 'dismissed' }, { count: 'exact' })
     .eq('id', params.id)
     .eq('status', 'pending')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!count) return NextResponse.json({ error: 'Item not found or already handled' }, { status: 404 })
   return NextResponse.json({ success: true })
 }

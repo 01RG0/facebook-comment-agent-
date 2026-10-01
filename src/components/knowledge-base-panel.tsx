@@ -228,14 +228,13 @@ export default function KnowledgeBasePanel({ pageId }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Download template */}
-          <a
-            href="/templates/osama-saadallah-template.zip"
-            download
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 rounded-lg transition"
+          {/* Download template — disabled until template file is added to public/templates/ */}
+          <span
+            title="Template coming soon"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 dark:text-gray-600 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg cursor-not-allowed opacity-60"
           >
             ⬇ Download Template
-          </a>
+          </span>
           {/* Import ZIP */}
           <button
             type="button"

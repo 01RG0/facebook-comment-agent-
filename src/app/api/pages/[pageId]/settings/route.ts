@@ -84,11 +84,11 @@ export async function PATCH(
   if (human_handoff_enabled !== undefined) update.human_handoff_enabled = human_handoff_enabled
   if (human_handoff_keywords !== undefined) update.human_handoff_keywords = human_handoff_keywords
   if (public_comment_reply_enabled !== undefined) update.public_comment_reply_enabled = public_comment_reply_enabled
-  if (public_comment_reply_text !== undefined) update.public_comment_reply_text = public_comment_reply_text || 'تم إرسال التفاصيل برايفت 📩'
+  if (public_comment_reply_text !== undefined) update.public_comment_reply_text = public_comment_reply_text ?? 'تم إرسال التفاصيل برايفت 📩'
   if (public_comment_on_approval !== undefined) update.public_comment_on_approval = public_comment_on_approval
   if (public_comment_reply_mode !== undefined) update.public_comment_reply_mode = ['static', 'ai'].includes(public_comment_reply_mode) ? public_comment_reply_mode : 'static'
   if (public_comment_ai_instructions !== undefined) update.public_comment_ai_instructions = public_comment_ai_instructions || null
-  if (messaging_unavailable_reply !== undefined) update.messaging_unavailable_reply = messaging_unavailable_reply?.trim() || 'ابعتلنا مسدج ع رسائل الصفحة وهيتم الرد وتوضيح كل التفاصيل'
+  if (messaging_unavailable_reply !== undefined) update.messaging_unavailable_reply = messaging_unavailable_reply?.trim() ?? 'ابعتلنا مسدج ع رسائل الصفحة وهيتم الرد وتوضيح كل التفاصيل'
 
   // Encrypt API key if provided
   if (ai_api_key) {

@@ -18,6 +18,7 @@ async function zernioFetch(path: string, init: RequestInit = {}): Promise<Respon
   const response = await fetch(url, {
     ...init,
     headers,
+    signal: init.signal ?? AbortSignal.timeout(15000),
   })
 
   if (!response.ok) {
@@ -48,6 +49,22 @@ export async function getConnectUrl(
 
 export async function getZernioAccount(accountId: string): Promise<{ name?: string; picture?: string; username?: string } | null> {
   try {
+    // Try direct lookup first to avoid paginated list issues
+    try {
+      const directRes = await zernioFetch(`/accounts/${accountId}`)
+      if (directRes.ok) {
+        const account = await directRes.json()
+        if (account?._id || account?.id) {
+          return {
+            name: account.displayName ?? account.username,
+            picture: account.profilePicture ?? null,
+            username: account.username,
+          }
+        }
+      }
+    } catch {}
+
+    // Fallback: scan the list (works when direct endpoint unavailable)
     const res = await zernioFetch('/accounts')
     const data = await res.json()
     const accounts: any[] = data?.accounts ?? []
@@ -228,7 +245,7 @@ export async function createZernioWebhook(
 
 // Returns posts (with commentCount, picture, content)
 export async function getZernioPosts(accountId: string, limit = 50, cursor?: string): Promise<any> {
-  const params = new URLSearchParams({ accountId, limit: String(limit) })
+  const params = new URLSearchParams({ accountId, limit: String(limit), sortOrder: 'desc' })
   if (cursor) params.set('cursor', cursor)
   const res = await zernioFetch('/inbox/comments?' + params.toString())
   return res.json()

@@ -58,6 +58,8 @@ export async function DELETE(
   const storagePath = url.pathname.split('/page-assets/').at(1)
   if (storagePath) {
     await supabase.storage.from('page-assets').remove([storagePath])
+  } else {
+    console.warn('[assets] Could not derive storage path — storage file may be orphaned', { assetId: params.assetId, url: asset.file_url })
   }
 
   const { error } = await supabase.from('page_assets').delete().eq('id', params.assetId)

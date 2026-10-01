@@ -3,9 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { friendlyError } from '@/lib/friendly-errors'
+import { FlaskConical, Loader2, Check, X } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
+
+interface Page { id: string; page_name: string }
 
 type Health = 'healthy' | 'degraded' | 'failing'
 
@@ -116,6 +119,14 @@ export default function AiKeysManager() {
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testStatus, setTestStatus] = useState<Record<string, 'ok' | 'error'>>({})
 
+  // Test the AI state
+  const [pages, setPages] = useState<Page[]>([])
+  const [testPageId, setTestPageId] = useState<string>('')
+  const [testComment, setTestComment] = useState('')
+  const [testRecipient, setTestRecipient] = useState('')
+  const [testResult, setTestResult] = useState<{ reply: string; provider: string; model: string; sent?: boolean; sendError?: string | null } | null>(null)
+  const [testing, setTesting] = useState(false)
+
   const handleTestKey = async (keyId: string) => {
     setTestingId(keyId)
     try {
@@ -132,11 +143,33 @@ export default function AiKeysManager() {
     }
   }
 
+  const handleTestReply = async () => {
+    if (!testPageId || !testComment) return
+    setTesting(true); setTestResult(null)
+    try {
+      const res = await fetch(`/api/pages/${testPageId}/test-reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comment_text: testComment, recipient_id: testRecipient.trim() || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setTestResult(data)
+      if (data.sent) toast.success('Test DM sent successfully!')
+      if (data.sendError) toast.error(`Send failed: ${data.sendError}`)
+    } catch (err) { toast.error(friendlyError(err)) }
+    finally { setTesting(false) }
+  }
+
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/ai-keys')
-      const data = await res.json() as AiKey[]
+      const [keysRes, pagesRes] = await Promise.all([fetch('/api/ai-keys'), fetch('/api/pages')])
+      const data = await keysRes.json() as AiKey[]
       setKeys(data)
+      const pagesData = await pagesRes.json() as Page[]
+      if (Array.isArray(pagesData)) {
+        setPages(pagesData)
+        if (pagesData.length > 0) setTestPageId(p => p || pagesData[0].id)
+      }
     } catch {
       toast.error('Could not load your API keys. Please refresh the page.')
     } finally {
@@ -353,6 +386,78 @@ export default function AiKeysManager() {
           ))}
         </div>
       )}
+
+      {/* Test the AI */}
+      <div className="mt-6 border border-violet-200 dark:border-violet-800 rounded-xl bg-violet-50/40 dark:bg-violet-950/20 p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <FlaskConical className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+          <h3 className="text-sm font-semibold text-violet-700 dark:text-violet-300">Test the AI</h3>
+          <span className="text-xs text-violet-500 dark:text-violet-400">— Generate a reply using your live keys and settings</span>
+        </div>
+
+        {pages.length > 1 && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Page</label>
+            <select
+              value={testPageId}
+              onChange={e => setTestPageId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+            >
+              {pages.map(p => <option key={p.id} value={p.id}>{p.page_name}</option>)}
+            </select>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            value={testComment}
+            onChange={e => setTestComment(e.target.value)}
+            placeholder="Type a sample comment, e.g. كم سعر الكورس؟"
+            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+          />
+          <button
+            type="button"
+            onClick={handleTestReply}
+            disabled={testing || !testComment || !testPageId}
+            className="px-5 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-400 text-white text-sm font-medium rounded-xl transition whitespace-nowrap"
+          >
+            {testing ? <><Loader2 className="w-4 h-4 animate-spin inline mr-1.5" />Working...</> : '✨ Generate'}
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Send as real DM (optional)</label>
+          <input
+            type="text"
+            value={testRecipient}
+            onChange={e => setTestRecipient(e.target.value)}
+            placeholder="Facebook user ID / PSID — leave blank to preview only"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+          />
+          <p className="text-xs text-gray-400 mt-1">Enter a Facebook user ID to actually send the generated reply via Messenger DM.</p>
+        </div>
+
+        {testResult && (
+          <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-xl p-4 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-xs font-medium text-violet-500 dark:text-violet-400">{testResult.provider} / {testResult.model}</p>
+              {testResult.sent && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-700 px-2 py-0.5 rounded-full">
+                  <Check className="w-3 h-3" /> DM Sent
+                </span>
+              )}
+              {testResult.sendError && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-700 px-2 py-0.5 rounded-full">
+                  <X className="w-3 h-3" /> Send failed
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{testResult.reply}</p>
+            {testResult.sendError && <p className="text-xs text-red-500 mt-1">{testResult.sendError}</p>}
+          </div>
+        )}
+      </div>
 
       {/* Add/Edit Dialog */}
       {showDialog && (

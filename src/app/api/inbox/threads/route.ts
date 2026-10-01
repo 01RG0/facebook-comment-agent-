@@ -200,6 +200,7 @@ export async function POST(req: NextRequest) {
       user_id: page.user_id,
       sender_id: String(sender_id),
       updated_at: new Date().toISOString(),
+      last_message_at: new Date().toISOString(),
     }
     if (sender_name !== undefined) upsertData.sender_name = sender_name
     if (sender_avatar !== undefined) upsertData.sender_avatar = sender_avatar

@@ -3,13 +3,10 @@
 import { useSearchParams } from 'next/navigation'
 import { useEffect } from 'react'
 import useSWR from 'swr'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/client'
 import ActivityLog from '@/components/activity-log'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient()
 
 interface Page { id: string; page_name: string; fb_page_id: string }
 

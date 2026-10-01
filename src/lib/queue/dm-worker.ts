@@ -79,6 +79,10 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
     }
 
     if (baseUrl) { try { validateExternalUrl(baseUrl) } catch { baseUrl = undefined } }
+    if (!message.trim()) {
+      log.warn({ threadId }, 'DM job skipped — empty message text after all fallbacks')
+      return
+    }
     const instructions = settings?.reply_instructions ?? 'You are a helpful assistant. Reply professionally and concisely.'
     const provider = createAiProvider({ provider: providerName, apiKey, model: modelName, baseUrl })
     log.info({ provider: providerName }, 'DM AI generation started')
