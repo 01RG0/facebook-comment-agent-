@@ -410,6 +410,45 @@ export async function processCommentJob(data: CommentJobPayload): Promise<void> 
         return
       }
 
+      // ── 12a. Mirror thread + messages into Inbox so conversation is visible ──
+      try {
+        const nowIso = new Date().toISOString()
+        const { data: thread } = await db
+          .from('messenger_threads')
+          .upsert({
+            page_id: pageId,
+            user_id: page.user_id,
+            sender_id: from.id,
+            sender_name: from.name || null,
+            last_message_at: nowIso,
+            unread_count: 0,
+          }, { onConflict: 'page_id,sender_id' })
+          .select('id')
+          .single()
+
+        if (thread?.id) {
+          // Insert the comment as the inbound message (ignore duplicate if already exists)
+          await db.from('messenger_messages').upsert({
+            thread_id: thread.id,
+            fb_message_id: `comment-${commentId}`,
+            direction: 'inbound',
+            text: message,
+            sent_at: new Date(createdTime * 1000).toISOString(),
+          }, { onConflict: 'fb_message_id', ignoreDuplicates: true })
+
+          // Insert the AI reply as outbound
+          await db.from('messenger_messages').insert({
+            thread_id: thread.id,
+            direction: 'outbound',
+            text: replyText,
+            sent_by_label: 'ai',
+            sent_at: nowIso,
+          })
+        }
+      } catch (inboxErr) {
+        log.warn({ err: (inboxErr as Error).message }, 'Failed to mirror comment reply into inbox (non-critical)')
+      }
+
       if (imageAssetId) {
         // Zernio private-reply is text-only; try to find the opened Messenger conversation and
         // send the image there. Best-effort — the match may fail if the PSID differs from
