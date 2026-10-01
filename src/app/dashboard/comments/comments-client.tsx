@@ -69,22 +69,24 @@ export default function CommentsClient() {
   const [sending, setSending] = useState(false)
   const [aiRepliedIds, setAiRepliedIds] = useState<Set<string>>(new Set())
 
+  const refreshAiReplied = useCallback(async () => {
+    try {
+      const res = await fetch('/api/comments?aiReplied=1')
+      if (!res.ok) return
+      const json = await res.json()
+      if (Array.isArray(json.repliedCommentIds)) {
+        setAiRepliedIds(new Set(json.repliedCommentIds))
+      }
+    } catch {}
+  }, [])
+
   const loadPosts = useCallback(async () => {
     setLoading(true)
     try {
-      const [postsRes, aiRes] = await Promise.all([
-        fetch('/api/comments'),
-        fetch('/api/comments?aiReplied=1'),
-      ])
-      const postsJson = await postsRes.json()
-      setPosts(postsJson.posts ?? [])
-      setPostsNextCursor(postsJson.nextCursor ?? null)
-      if (aiRes.ok) {
-        const aiJson = await aiRes.json()
-        if (Array.isArray(aiJson.repliedCommentIds)) {
-          setAiRepliedIds(new Set(aiJson.repliedCommentIds))
-        }
-      }
+      const res = await fetch('/api/comments')
+      const json = await res.json()
+      setPosts(json.posts ?? [])
+      setPostsNextCursor(json.nextCursor ?? null)
     } catch {
       toast.error('Failed to load posts')
     } finally {
@@ -107,7 +109,13 @@ export default function CommentsClient() {
     }
   }
 
-  useEffect(() => { loadPosts() }, [loadPosts])
+  useEffect(() => {
+    loadPosts()
+    refreshAiReplied()
+    // poll AI replied badges every 10s so new replies appear without refresh
+    const interval = setInterval(refreshAiReplied, 10_000)
+    return () => clearInterval(interval)
+  }, [loadPosts, refreshAiReplied])
 
   const selectPost = async (post: Post) => {
     setSelectedPost(post)
