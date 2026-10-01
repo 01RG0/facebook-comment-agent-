@@ -1,6 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 import { formatDistanceToNow } from 'date-fns'
 import {
   MessageSquare, RefreshCw, ChevronLeft, Reply,
@@ -112,9 +118,14 @@ export default function CommentsClient() {
   useEffect(() => {
     loadPosts()
     refreshAiReplied()
-    // poll AI replied badges every 10s so new replies appear without refresh
-    const interval = setInterval(refreshAiReplied, 10_000)
-    return () => clearInterval(interval)
+    // Realtime: refresh AI replied badges instantly when comments_log changes
+    const channel = supabase
+      .channel('comments_log_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments_log' }, () => {
+        refreshAiReplied()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [loadPosts, refreshAiReplied])
 
   const selectPost = async (post: Post) => {

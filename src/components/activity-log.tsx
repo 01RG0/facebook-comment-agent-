@@ -1,11 +1,17 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import useSWR from 'swr'
+import { createClient } from '@supabase/supabase-js'
 import { formatDistanceToNow, format } from 'date-fns'
 import { toast } from 'sonner'
 import { friendlyError } from '@/lib/friendly-errors'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface Page { id: string; page_name: string; fb_page_id: string }
 
@@ -53,7 +59,22 @@ export default function ActivityLog({ pages, selectedPageId }: Props) {
     ? `/api/pages/${pageId}/activity?limit=${pageSize}&offset=${offset}${statusFilter ? `&status=${statusFilter}` : ''}`
     : null
 
-  const { data, isLoading, mutate } = useSWR(url, fetcher, { refreshInterval: 15000 })
+  const { data, isLoading, mutate } = useSWR(url, fetcher, { refreshInterval: 30000 })
+
+  // Live updates via Supabase Realtime — instant refresh when a new reply lands
+  useEffect(() => {
+    if (!pageId) return
+    const channel = supabase
+      .channel(`comments_log:${pageId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'comments_log',
+        filter: `page_id=eq.${pageId}`,
+      }, () => { mutate() })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [pageId, mutate])
 
   const handlePageChange = (id: string) => {
     setOffset(0)
