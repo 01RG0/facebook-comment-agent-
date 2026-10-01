@@ -135,6 +135,7 @@ export default function MessengerInboxPage() {
     mutate: mutateThreads,
   } = useSWR<{ threads: MessengerThread[]; count: number }>(threadsQuery, fetcher, {
     revalidateOnFocus: true,
+    refreshInterval: 30000,
   })
 
   const threads = useMemo(() => threadsData?.threads ?? [], [threadsData])
@@ -160,6 +161,16 @@ export default function MessengerInboxPage() {
     return () => {
       supabase.removeChannel(channel)
     }
+  }, [mutateThreads])
+
+  // Background auto-sync: polls Zernio every 60s to catch messages missed by webhooks
+  useEffect(() => {
+    const sync = () => fetch('/api/inbox/auto-sync', { method: 'POST' }).then(r => r.json()).catch(() => {})
+    sync() // immediate sync on mount
+    const interval = setInterval(() => {
+      sync().then(() => mutateThreads())
+    }, 60000)
+    return () => clearInterval(interval)
   }, [mutateThreads])
 
   // Selected thread data
