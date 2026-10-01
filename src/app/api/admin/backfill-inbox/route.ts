@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/admin-auth'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 
@@ -8,9 +8,8 @@ export const dynamic = 'force-dynamic'
 // One-time backfill: create messenger_threads for contacts that have no thread yet.
 // Uses comments_log to also seed the last message text/time.
 export async function POST() {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { user, error } = await requireAdmin()
+  if (error) return error
 
   const db = getAdminClient()
 
