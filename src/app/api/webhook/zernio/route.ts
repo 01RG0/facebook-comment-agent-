@@ -44,10 +44,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, message: 'Test webhook received' }, { status: 200 })
   }
 
-  // Ignore outbound message confirmations (e.g. message.sent) to prevent loop/error
+  // Log then ignore outbound confirmations — but dump the full payload first so we can
+  // verify Zernio's field names for inbound DMs vs outbound confirmations.
   if (eventType === 'message.sent' || payload.message?.direction === 'outgoing') {
+    logger.warn({ eventType, direction: payload.message?.direction, fullPayload: payload }, 'OUTGOING_DUMP: classified as outgoing — verify this is not an inbound DM')
     return NextResponse.json({ ok: true, ignored: 'outgoing_message' }, { status: 200 })
   }
+
+  logger.info({ eventType, hasMessage: !!payload.message, hasComment: !!payload.comment, payloadKeys: Object.keys(payload) }, 'Webhook event type detected')
 
   // ── Handle Messenger Direct Message (DM) Events ──
   // Only treat explicit inbound message events as DMs — exclude receipt/status events
