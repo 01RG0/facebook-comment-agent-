@@ -44,61 +44,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, message: 'Test webhook received' }, { status: 200 })
   }
 
-  // ── Handle outbound messages (sent by page owner from Facebook, or AI confirmations) ──
-  // Store them in the inbox as outbound so the full conversation is visible in the app.
-  // Do NOT run AI processing on them.
+  // Skip pure status events — no message content to store
+  if (eventType === 'message.delivered' || eventType === 'message.read') {
+    return NextResponse.json({ ok: true, ignored: 'status_event' }, { status: 200 })
+  }
+
+  // ── Handle outbound messages (sent by page owner from Facebook) ──
+  // Store in inbox as outbound/human so the full conversation is visible. No AI.
   if (eventType === 'message.sent' || payload.message?.direction === 'outgoing') {
-    logger.info(
-      {
-        eventType,
-        direction: payload.message?.direction,
-        messageId: payload.message?.id,
-        payloadKeys: Object.keys(payload),
-        messageKeys: payload.message ? Object.keys(payload.message) : [],
-        ...(process.env.WEBHOOK_DEBUG_DUMP === 'true' && { fullPayload: payload }),
-      },
-      'Outbound message event — storing in inbox without AI processing'
-    )
+    logger.info({ eventType, messageId: payload.message?.id, ...(process.env.WEBHOOK_DEBUG_DUMP === 'true' && { fullPayload: payload }) }, 'Outbound message — storing in inbox')
 
     try {
       const msgObj = typeof payload.message === 'object' && payload.message !== null ? payload.message : {}
       const convObj = typeof payload.conversation === 'object' && payload.conversation !== null ? payload.conversation : {}
-      const fromObj = payload.from || msgObj.from || msgObj.sender || payload.sender || {}
-      const accountId = payload.account?.id || payload.accountId || payload.zernio_account_id ||
-        payload.channel?.id || payload.inbox?.id || msgObj.accountId || ''
-      const participantId = String(convObj.participantId || convObj.id || payload.contact?.id || payload.sender?.id || fromObj.id || msgObj.sender_id || '')
-      const participantName = convObj.participantName || fromObj.name || msgObj.sender_name || 'Facebook User'
-      const messageText = typeof payload.message === 'string' ? payload.message : (msgObj.text ?? msgObj.message ?? payload.text ?? '')
-      const fbMessageId = msgObj.id || msgObj.fb_message_id || payload.fb_message_id || payload.id || null
+      const accountId = String(payload.account?.id || payload.accountId || '')
+      // participantId is always the customer — use conversation.participantId
+      const participantId = String(convObj.participantId || convObj.id || '')
+      const participantName = String(convObj.participantName || 'Facebook User')
+      const messageText = String(msgObj.text ?? msgObj.message ?? payload.text ?? '')
+      // Use Zernio's internal message ID for dedup (not the Facebook platform ID)
+      const fbMessageId = String(msgObj.id || payload.id || '')
 
-      if (!participantId || !accountId) {
-        logger.warn({ payloadKeys: Object.keys(payload), accountId, participantId }, 'Outbound event missing participantId or accountId — skipping inbox store')
-        return NextResponse.json({ ok: true, ignored: 'missing_ids' }, { status: 200 })
+      if (!participantId || !accountId || !messageText) {
+        return NextResponse.json({ ok: true, ignored: 'missing_fields' }, { status: 200 })
       }
 
       const db = getAdminClient()
       const { data: page } = await db.from('pages').select('id, user_id').eq('zernio_account_id', accountId).maybeSingle()
       if (!page) return NextResponse.json({ ok: true, ignored: 'page_not_found' }, { status: 200 })
 
-      const nowIso = new Date().toISOString()
+      const sentAt = msgObj.sentAt || new Date().toISOString()
       const { data: thread } = await db.from('messenger_threads').upsert(
-        { page_id: page.id, user_id: page.user_id, sender_id: participantId, sender_name: participantName, last_message_at: nowIso, unread_count: 0 },
+        { page_id: page.id, user_id: page.user_id, sender_id: participantId, sender_name: participantName, last_message_at: sentAt },
         { onConflict: 'page_id,sender_id' }
       ).select('id').single()
 
-      if (thread && fbMessageId) {
+      if (thread) {
         await db.from('messenger_messages').upsert(
-          { thread_id: thread.id, fb_message_id: String(fbMessageId), direction: 'outbound', text: messageText, sent_by_label: 'human', sent_at: nowIso },
+          { thread_id: thread.id, fb_message_id: fbMessageId, direction: 'outbound', text: messageText, sent_by_label: 'human', sent_at: sentAt },
           { onConflict: 'fb_message_id', ignoreDuplicates: true }
         )
-      } else if (thread && messageText) {
-        // No fbMessageId — only insert if we can't dedup (best effort)
-        await db.from('messenger_messages').insert(
-          { thread_id: thread.id, direction: 'outbound', text: messageText, sent_by_label: 'human', sent_at: nowIso }
-        ).then(() => {}).catch(() => {})
       }
     } catch (err) {
-      logger.warn({ err: (err as Error).message }, 'Failed to store outbound message in inbox (non-critical)')
+      logger.warn({ err: (err as Error).message }, 'Failed to store outbound message (non-critical)')
     }
 
     return NextResponse.json({ ok: true }, { status: 200 })
@@ -123,12 +111,14 @@ export async function POST(req: NextRequest) {
     const accountId = payload.account?.id || payload.accountId || payload.zernio_account_id ||
       payload.channel?.id || payload.inbox?.id || msgObj.accountId || ''
 
-    // For conversation threads, senderId must be the customer (participantId), not the page/account ID
+    // conversation.participantId is always the customer (confirmed from Zernio payload structure)
     let senderId = String(
-      convObj.participantId || convObj.id || fromObj.id ||
+      convObj.participantId ||
+      convObj.id || fromObj.id ||
       payload.sender?.id || payload.contact?.id ||
       msgObj.sender_id || msgObj.senderId || payload.sender_id || ''
     )
+    // Ensure senderId is never the page/account itself
     if (senderId === accountId && convObj.participantId) {
       senderId = String(convObj.participantId)
     }
