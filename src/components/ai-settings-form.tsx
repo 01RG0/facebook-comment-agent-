@@ -41,6 +41,14 @@ interface Settings {
   public_comment_reply_mode?: string | null
   public_comment_ai_instructions?: string | null
   messaging_unavailable_reply?: string | null
+  comment_agent_enabled?: boolean
+  dm_agent_enabled?: boolean
+  dm_reply_instructions?: string | null
+  dm_reply_language?: string
+  dm_reply_tone?: string
+  dm_reply_length?: string
+  dm_ai_provider?: string | null
+  dm_ai_model?: string | null
 }
 
 interface Props {
@@ -272,10 +280,21 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
     public_comment_reply_mode: initialSettings?.public_comment_reply_mode ?? 'static',
     public_comment_ai_instructions: initialSettings?.public_comment_ai_instructions ?? '',
     messaging_unavailable_reply: initialSettings?.messaging_unavailable_reply ?? 'Please send us a message on the page inbox and we will get back to you with all the details.',
+    // Per-channel toggles
+    comment_agent_enabled: initialSettings?.comment_agent_enabled ?? true,
+    dm_agent_enabled: initialSettings?.dm_agent_enabled ?? true,
+    // DM-specific settings
+    dm_reply_instructions: initialSettings?.dm_reply_instructions ?? '',
+    dm_reply_language: initialSettings?.dm_reply_language ?? 'Egyptian Arabic',
+    dm_reply_tone: initialSettings?.dm_reply_tone ?? 'friendly',
+    dm_reply_length: initialSettings?.dm_reply_length ?? 'medium',
+    dm_ai_provider: initialSettings?.dm_ai_provider ?? '',
+    dm_ai_model: initialSettings?.dm_ai_model ?? '',
   })
 
   const [form, setForm] = useState(defaultForm)
   const formRef = useRef(form)
+  const [activeTab, setActiveTab] = useState<'comments' | 'dms'>('comments')
   useEffect(() => {
     setHasCustomApiKey(initialSettings?.has_custom_api_key ?? false)
     setForm(defaultForm())
@@ -373,6 +392,14 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
       messaging_unavailable_reply: f.messaging_unavailable_reply,
       public_comment_reply_text: f.public_comment_reply_text,
       public_comment_on_approval: f.public_comment_on_approval,
+      comment_agent_enabled: f.comment_agent_enabled,
+      dm_agent_enabled: f.dm_agent_enabled,
+      dm_reply_instructions: f.dm_reply_instructions || null,
+      dm_reply_language: f.dm_reply_language,
+      dm_reply_tone: f.dm_reply_tone,
+      dm_reply_length: f.dm_reply_length,
+      dm_ai_provider: f.dm_ai_provider || null,
+      dm_ai_model: f.dm_ai_model || null,
     }
 
     if (f.ai_api_key?.trim()) payload.ai_api_key = f.ai_api_key.trim()
@@ -416,6 +443,45 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
 
       {selectedPageId && (
         <form onSubmit={handleSave} className="space-y-5">
+
+          {/* ── Tab switcher ── */}
+          <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+            <button type="button" onClick={() => setActiveTab('comments')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition ${
+                activeTab === 'comments'
+                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}>
+              <MessageSquare className="w-4 h-4" />
+              Comments
+              <span className={`w-2 h-2 rounded-full ${form.comment_agent_enabled ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+            </button>
+            <button type="button" onClick={() => setActiveTab('dms')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition ${
+                activeTab === 'dms'
+                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}>
+              <Zap className="w-4 h-4" />
+              DMs / Inbox
+              <span className={`w-2 h-2 rounded-full ${form.dm_agent_enabled ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+            </button>
+          </div>
+
+          {/* ── Comments tab ── */}
+          <div className={activeTab === 'comments' ? 'space-y-5' : 'hidden'}>
+
+          {/* Channel toggle */}
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Comment AI Replies</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Auto-reply to comments with a private DM</p>
+            </div>
+            <button type="button" onClick={() => set({ comment_agent_enabled: !form.comment_agent_enabled })}
+              className={`relative w-11 h-6 rounded-full transition-colors ${form.comment_agent_enabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.comment_agent_enabled ? 'translate-x-5' : ''}`} />
+            </button>
+          </div>
 
           {/* ── 1. AI Rules Builder ── */}
           <Section icon={<Sparkles className="w-5 h-5" />} title="AI Rules" description="Define how the AI behaves — no technical knowledge needed">
@@ -783,6 +849,88 @@ export default function AiSettingsForm({ pages, selectedPageId, initialSettings 
               </div>
             )}
           </div>
+
+          </div>{/* end comments tab */}
+
+          {/* ── DMs tab ── */}
+          {activeTab === 'dms' && (
+            <div className="space-y-5">
+
+              {/* DM agent toggle */}
+              <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">DM / Inbox AI Replies</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Auto-reply to incoming Messenger messages</p>
+                </div>
+                <button type="button" onClick={() => set({ dm_agent_enabled: !form.dm_agent_enabled })}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${form.dm_agent_enabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.dm_agent_enabled ? 'translate-x-5' : ''}`} />
+                </button>
+              </div>
+
+              {/* DM Instructions */}
+              <Section icon={<Sparkles className="w-5 h-5" />} title="DM AI Rules" description="Instructions for how the AI replies to private messages">
+                <textarea
+                  value={form.dm_reply_instructions}
+                  onChange={e => set({ dm_reply_instructions: e.target.value })}
+                  rows={6}
+                  placeholder="e.g. أنت مساعد لأستاذ تعليمي. رد على أسئلة الطلاب بشكل ودي ومفيد. لا تعطي إجابات الامتحانات مباشرة."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                />
+                <p className="text-xs text-gray-400 mt-1">Leave blank to use the same instructions as comment replies.</p>
+              </Section>
+
+              {/* DM Style */}
+              <Section icon={<Globe className="w-5 h-5" />} title="DM Reply Style" description="Language and tone for DM replies">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Language</label>
+                    <select value={form.dm_reply_language} onChange={e => set({ dm_reply_language: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tone</label>
+                    <select value={form.dm_reply_tone} onChange={e => set({ dm_reply_tone: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      {PRESET_TONES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Length</label>
+                    <select value={form.dm_reply_length} onChange={e => set({ dm_reply_length: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="short">Short</option>
+                      <option value="medium">Medium</option>
+                      <option value="long">Long</option>
+                    </select>
+                  </div>
+                </div>
+              </Section>
+
+              {/* DM AI Provider override */}
+              <Section icon={<Zap className="w-5 h-5" />} title="DM AI Model" description="Override the AI provider/model just for DMs (optional)">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Provider</label>
+                    <select value={form.dm_ai_provider} onChange={e => set({ dm_ai_provider: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Same as Comments</option>
+                      {AI_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Model</label>
+                    <input type="text" value={form.dm_ai_model} onChange={e => set({ dm_ai_model: e.target.value })}
+                      placeholder="Leave blank to use default"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+              </Section>
+
+            </div>
+          )}{/* end DMs tab */}
 
           {/* Auto-save status indicator */}
           <div className="flex justify-end pt-1 h-8">

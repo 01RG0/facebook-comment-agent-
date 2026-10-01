@@ -34,9 +34,15 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
 
     const { data: settings } = await db
       .from('settings')
-      .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_ids, reply_instructions, reply_language, review_mode_enabled')
+      .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_ids, reply_instructions, reply_language, review_mode_enabled, dm_agent_enabled, dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length, dm_ai_provider, dm_ai_model')
       .eq('page_id', pageId)
       .maybeSingle()
+
+    // Check DM agent toggle (defaults to enabled if column not yet set)
+    if (settings?.dm_agent_enabled === false) {
+      log.info('DM agent disabled for this page, skipping')
+      return
+    }
 
     if (settings?.review_mode_enabled) {
       await db.from('handoff_queue').insert({
@@ -54,8 +60,9 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
     }
 
     let apiKey: string | undefined
-    let providerName = (settings?.ai_provider ?? 'gemini') as AiProviderName
-    let modelName = settings?.ai_model ?? undefined
+    // Use DM-specific provider/model if set, otherwise fall back to page defaults
+    let providerName = ((settings?.dm_ai_provider || settings?.ai_provider) ?? 'gemini') as AiProviderName
+    let modelName = (settings?.dm_ai_model || settings?.ai_model) ?? undefined
     let baseUrl = settings?.custom_base_url ?? undefined
 
     const preferredKeyIds: string[] = settings?.preferred_ai_key_ids ?? []
@@ -97,11 +104,13 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
       .map(m => ({ role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant', text: m.text ?? '' }))
       .filter(m => m.text)
 
-    const instructions = settings?.reply_instructions ?? 'You are a helpful assistant. Reply professionally and concisely.'
+    // Use DM-specific instructions if set, otherwise fall back to comment instructions
+    const instructions = settings?.dm_reply_instructions || settings?.reply_instructions || 'You are a helpful assistant. Reply professionally and concisely.'
+    const language = settings?.dm_reply_language || settings?.reply_language || 'auto'
     const provider = createAiProvider({ provider: providerName, apiKey, model: modelName, baseUrl })
     log.info({ provider: providerName, historyLength: conversationHistory.length }, 'DM AI generation started')
     const aiStart = Date.now()
-    const aiResult = await provider.generateReply(message, instructions, settings?.reply_language ?? 'auto', conversationHistory)
+    const aiResult = await provider.generateReply(message, instructions, language, conversationHistory)
     const aiLatencyMs = Date.now() - aiStart
     const aiReply = aiResult.text
     log.info({ provider: providerName, latencyMs: aiLatencyMs, tokens: aiResult.tokens?.totalTokens }, 'DM AI generation done')

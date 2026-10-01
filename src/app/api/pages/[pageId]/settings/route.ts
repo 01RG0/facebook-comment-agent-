@@ -21,7 +21,7 @@ export async function GET(
 
   const { data: settings, error } = await supabase
     .from('settings')
-    .select('id, ai_provider, ai_model, custom_base_url, ai_api_key_enc, preferred_ai_key_ids, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text, public_comment_on_approval, public_comment_reply_mode, public_comment_ai_instructions, messaging_unavailable_reply, updated_at')
+    .select('id, ai_provider, ai_model, custom_base_url, ai_api_key_enc, preferred_ai_key_ids, reply_instructions, reply_language, reply_delay_seconds, max_replies_per_hour, keyword_filter, blacklisted_user_ids, reply_to_own_posts_only, reply_tone, reply_length, reply_blacklist_words, review_mode_enabled, auto_retry_enabled, max_retry_attempts, human_handoff_enabled, human_handoff_keywords, public_comment_reply_enabled, public_comment_reply_text, public_comment_on_approval, public_comment_reply_mode, public_comment_ai_instructions, messaging_unavailable_reply, comment_agent_enabled, dm_agent_enabled, dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length, dm_ai_provider, dm_ai_model, updated_at')
     .eq('page_id', params.pageId)
     .single()
 
@@ -61,6 +61,9 @@ export async function PATCH(
     public_comment_reply_mode,
     public_comment_ai_instructions,
     messaging_unavailable_reply,
+    comment_agent_enabled, dm_agent_enabled,
+    dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length,
+    dm_ai_provider, dm_ai_model,
   } = body
 
   const update: Record<string, unknown> = {}
@@ -89,6 +92,14 @@ export async function PATCH(
   if (public_comment_reply_mode !== undefined) update.public_comment_reply_mode = ['static', 'ai'].includes(public_comment_reply_mode) ? public_comment_reply_mode : 'static'
   if (public_comment_ai_instructions !== undefined) update.public_comment_ai_instructions = public_comment_ai_instructions || null
   if (messaging_unavailable_reply !== undefined) update.messaging_unavailable_reply = messaging_unavailable_reply?.trim() ?? 'ابعتلنا مسدج ع رسائل الصفحة وهيتم الرد وتوضيح كل التفاصيل'
+  if (comment_agent_enabled !== undefined) update.comment_agent_enabled = comment_agent_enabled
+  if (dm_agent_enabled !== undefined) update.dm_agent_enabled = dm_agent_enabled
+  if (dm_reply_instructions !== undefined) update.dm_reply_instructions = dm_reply_instructions || null
+  if (dm_reply_language !== undefined) update.dm_reply_language = dm_reply_language
+  if (dm_reply_tone !== undefined) update.dm_reply_tone = dm_reply_tone
+  if (dm_reply_length !== undefined) update.dm_reply_length = dm_reply_length
+  if (dm_ai_provider !== undefined) update.dm_ai_provider = dm_ai_provider || null
+  if (dm_ai_model !== undefined) update.dm_ai_model = dm_ai_model || null
 
   // Encrypt API key if provided
   if (ai_api_key) {
