@@ -116,7 +116,10 @@ export default function DashboardNav({ user, isTeamMember = false, isAdmin = fal
 
   const allLinks: NavLink[] = [
     ...navLinks,
-    ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: <ShieldCheck className="w-5 h-5 flex-shrink-0" /> }] : []),
+    ...(isAdmin ? [
+      { href: '/dashboard/team', label: 'Team', icon: <Users className="w-5 h-5 flex-shrink-0" /> },
+      { href: '/admin', label: 'Admin', icon: <ShieldCheck className="w-5 h-5 flex-shrink-0" /> },
+    ] : []),
   ]
 
   const handleSignOut = async () => {
