@@ -78,6 +78,22 @@ export default function MessengerInboxPage() {
   const [noteText, setNoteText] = useState('')
   const [isSavingNote, setIsSavingNote] = useState(false)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  const handleSyncInbox = async () => {
+    setIsSyncing(true)
+    try {
+      const res = await fetch('/api/admin/backfill-inbox', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Sync failed')
+      toast.success(`Synced ${data.created} conversation${data.created !== 1 ? 's' : ''}${data.skipped ? ` (${data.skipped} already up to date)` : ''}`)
+      mutateThreads()
+    } catch (err) {
+      toast.error((err as Error).message || 'Sync failed')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -345,15 +361,28 @@ export default function MessengerInboxPage() {
                 Messenger
               </h1>
             </div>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => mutateThreads()}
-              className="h-7 w-7 p-0 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-              title="Refresh threads"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={handleSyncInbox}
+                disabled={isSyncing}
+                className="h-7 px-2 text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                title="Sync conversations from Facebook"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+                Sync
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => mutateThreads()}
+                className="h-7 w-7 p-0 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                title="Refresh threads"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
 
           {/* Page Filter Dropdown (fetch from /api/pages) */}
@@ -447,6 +476,16 @@ export default function MessengerInboxPage() {
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-[220px]">
                 Messenger DMs from your Facebook page will appear here
               </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSyncInbox}
+                disabled={isSyncing}
+                className="mt-3 h-7 text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Syncing...' : 'Sync from Facebook'}
+              </Button>
             </div>
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-gray-800/60">
