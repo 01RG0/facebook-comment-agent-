@@ -34,6 +34,7 @@ interface Props {
   isTeamMember?: boolean
   isAdmin?: boolean
   canAccessInbox?: boolean
+  allowedPages?: string[] | null
 }
 
 interface NavLink {
@@ -42,6 +43,7 @@ interface NavLink {
   icon: React.ReactNode
   hasBadge?: boolean
   badgeCount?: number
+  pageKey?: string
 }
 
 function getInitials(name: string | null, email: string) {
@@ -50,25 +52,21 @@ function getInitials(name: string | null, email: string) {
 }
 
 const ownerLinks: Omit<NavLink, 'badgeCount'>[] = [
-  { href: '/dashboard', label: 'Pages', icon: <LayoutDashboard className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/comments', label: 'Comments', icon: <MessageSquare className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/reviews', label: 'Reviews', icon: <Star className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/contacts', label: 'Contacts', icon: <Users className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/sequences', label: 'Sequences', icon: <GitMerge className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/inbox', label: 'Inbox', icon: <Inbox className="w-5 h-5 flex-shrink-0" />, hasBadge: true },
-  { href: '/dashboard/handoff', label: 'Handoff', icon: <GitPullRequestArrow className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/activity', label: 'Activity', icon: <BarChart2 className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/analytics', label: 'Analytics', icon: <TrendingUp className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/dlq', label: 'Failed DLQ', icon: <AlertTriangle className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/ai-keys', label: 'AI Keys', icon: <KeyRound className="w-5 h-5 flex-shrink-0" /> },
-  { href: '/dashboard/settings', label: 'Settings', icon: <Settings className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard', label: 'Pages', pageKey: 'pages', icon: <LayoutDashboard className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/comments', label: 'Comments', pageKey: 'comments', icon: <MessageSquare className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/reviews', label: 'Reviews', pageKey: 'reviews', icon: <Star className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/contacts', label: 'Contacts', pageKey: 'contacts', icon: <Users className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/sequences', label: 'Sequences', pageKey: 'sequences', icon: <GitMerge className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/inbox', label: 'Inbox', pageKey: 'inbox', icon: <Inbox className="w-5 h-5 flex-shrink-0" />, hasBadge: true },
+  { href: '/dashboard/handoff', label: 'Handoff', pageKey: 'handoff', icon: <GitPullRequestArrow className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/activity', label: 'Activity', pageKey: 'activity', icon: <BarChart2 className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/analytics', label: 'Analytics', pageKey: 'analytics', icon: <TrendingUp className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/dlq', label: 'Failed DLQ', pageKey: 'dlq', icon: <AlertTriangle className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/ai-keys', label: 'AI Keys', pageKey: 'ai-keys', icon: <KeyRound className="w-5 h-5 flex-shrink-0" /> },
+  { href: '/dashboard/settings', label: 'Settings', pageKey: 'settings', icon: <Settings className="w-5 h-5 flex-shrink-0" /> },
 ]
 
-const memberLinks: Omit<NavLink, 'badgeCount'>[] = [
-  { href: '/dashboard/handoff', label: 'Handoff', icon: <GitPullRequestArrow className="w-5 h-5 flex-shrink-0" /> },
-]
-
-export default function DashboardNav({ user, isTeamMember = false, isAdmin = false, canAccessInbox = true }: Props) {
+export default function DashboardNav({ user, isTeamMember = false, isAdmin = false, canAccessInbox = true, allowedPages = null }: Props) {
   const [unreadCount, setUnreadCount] = useState<number | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -104,10 +102,9 @@ export default function DashboardNav({ user, isTeamMember = false, isAdmin = fal
       .catch(() => {})
   }, [canAccessInbox])
 
-  let navLinks = isTeamMember
-    ? canAccessInbox
-      ? [...memberLinks, { href: '/dashboard/inbox', label: 'Inbox', icon: <Inbox className="w-5 h-5 flex-shrink-0" />, hasBadge: true }]
-      : memberLinks
+  // For team members, filter ownerLinks to only allowedPages (role-based)
+  let navLinks = isTeamMember && allowedPages !== null
+    ? ownerLinks.filter(link => link.pageKey && allowedPages.includes(link.pageKey))
     : ownerLinks
 
   if (!canAccessInbox) {

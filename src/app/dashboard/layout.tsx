@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import DashboardNav from '@/components/dashboard-nav'
+import { DEFAULT_ROLE_PERMISSIONS } from '@/lib/role-permissions'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
@@ -12,7 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     async (userId: string) => {
       const [profileResult, teamMemberResult] = await Promise.all([
         supabase.from('profiles').select('full_name, email, avatar_url, is_admin').eq('id', userId).single(),
-        supabase.from('team_members').select('id, role').eq('member_id', userId),
+        supabase.from('team_members').select('id, role, owner_id').eq('member_id', userId),
       ])
       return { profileResult, teamMemberResult }
     },
@@ -24,11 +25,33 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const teamMemberships = teamMemberResult.data ?? []
   const isTeamMember = teamMemberships.length > 0
-  const hasEditorOrReviewerRole = teamMemberships.some((m: { role?: string | null }) =>
-    m.role === 'editor' || m.role === 'reviewer'
-  )
-  const canAccessInbox = !isTeamMember || hasEditorOrReviewerRole
   const isAdmin = profileResult.data?.is_admin === true
+
+  // Determine allowed pages for team members based on role + custom permissions
+  let allowedPages: string[] | null = null
+  if (isTeamMember && !isAdmin) {
+    // Use the first membership's role and owner to look up permissions
+    const primaryMembership = teamMemberships[0]
+    const role = primaryMembership?.role ?? 'viewer'
+    const ownerId = primaryMembership?.owner_id
+
+    let rolePages = DEFAULT_ROLE_PERMISSIONS[role] ?? DEFAULT_ROLE_PERMISSIONS.viewer
+
+    if (ownerId) {
+      const { data: customPerm } = await supabase
+        .from('owner_role_permissions')
+        .select('allowed_pages')
+        .eq('owner_id', ownerId)
+        .eq('role', role)
+        .maybeSingle()
+
+      if (customPerm) rolePages = customPerm.allowed_pages
+    }
+
+    allowedPages = rolePages
+  }
+
+  const canAccessInbox = !isTeamMember || (allowedPages?.includes('inbox') ?? false)
 
   return (
     <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 flex flex-col">
@@ -37,6 +60,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         isTeamMember={isTeamMember}
         isAdmin={isAdmin}
         canAccessInbox={canAccessInbox}
+        allowedPages={allowedPages}
       />
       <div className="flex-1 lg:pl-64 pt-16 transition-all duration-300">
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

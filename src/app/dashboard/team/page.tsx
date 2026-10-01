@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { isAdminEmail } from '@/lib/admin-auth'
 import TeamManager from '@/components/team-manager'
+import RolePermissions from '@/components/role-permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,8 +22,9 @@ export default async function TeamPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
+    <div className="max-w-2xl mx-auto py-8 px-4 space-y-6">
       <TeamManager />
+      <RolePermissions />
     </div>
   )
 }
