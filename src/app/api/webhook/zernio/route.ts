@@ -47,7 +47,17 @@ export async function POST(req: NextRequest) {
   // Log then ignore outbound confirmations — but dump the full payload first so we can
   // verify Zernio's field names for inbound DMs vs outbound confirmations.
   if (eventType === 'message.sent' || payload.message?.direction === 'outgoing') {
-    logger.warn({ eventType, direction: payload.message?.direction, fullPayload: payload }, 'OUTGOING_DUMP: classified as outgoing — verify this is not an inbound DM')
+    logger.warn(
+      {
+        eventType,
+        direction: payload.message?.direction,
+        messageId: payload.message?.id,
+        payloadKeys: Object.keys(payload),
+        messageKeys: payload.message ? Object.keys(payload.message) : [],
+        ...(process.env.WEBHOOK_DEBUG_DUMP === 'true' && { fullPayload: payload }),
+      },
+      'OUTGOING_DUMP: classified as outgoing — verify this is not an inbound DM'
+    )
     return NextResponse.json({ ok: true, ignored: 'outgoing_message' }, { status: 200 })
   }
 
