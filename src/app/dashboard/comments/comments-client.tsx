@@ -39,6 +39,7 @@ interface Comment {
   canDelete: boolean
   canHide: boolean
   canLike: boolean
+  isReply?: boolean
 }
 
 const COLORS = ['bg-violet-500','bg-blue-500','bg-emerald-500','bg-orange-500','bg-rose-500','bg-indigo-500']
@@ -456,9 +457,12 @@ export default function CommentsClient() {
                     key={comment.id}
                     className={cn(
                       'p-4 rounded-xl border transition-all',
+                      comment.isReply && 'ml-6 border-l-4 border-l-blue-200 dark:border-l-blue-800',
                       comment.isHidden
                         ? 'bg-gray-50 dark:bg-gray-800/30 border-dashed border-gray-300 dark:border-gray-700 opacity-60'
-                        : 'bg-white dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
+                        : comment.isReply
+                          ? 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/40'
+                          : 'bg-white dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
                     )}
                   >
                     <div className="flex items-start gap-3">
@@ -480,6 +484,7 @@ export default function CommentsClient() {
                             <span className="text-sm font-semibold text-gray-900 dark:text-white">
                               {comment.authorName}
                               {comment.isOwner && <span className="ml-1 text-xs text-blue-500 font-normal">(you)</span>}
+                              {comment.isReply && <span className="ml-1 text-xs text-gray-400 font-normal">↩ reply</span>}
                             </span>
                             {isAiReplied && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 font-medium">

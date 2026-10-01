@@ -128,10 +128,10 @@ export async function sendZernioPublicReply(
   message: string
 ): Promise<void> {
   await zernioFetch(
-    `/inbox/comments/${encodeURIComponent(platformPostId)}`,
+    `/inbox/comments/${encodeURIComponent(platformPostId)}/${encodeURIComponent(commentId)}/reply`,
     {
       method: 'POST',
-      body: JSON.stringify({ accountId, message, commentId }),
+      body: JSON.stringify({ accountId, message }),
     }
   )
 }

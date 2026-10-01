@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       const comments: any[] = Array.isArray(data?.comments) ? data.comments : []
       const nextCursor = data?.pagination?.nextCursor ?? data?.nextCursor ?? null
 
-      const normalized = comments.map((c: any) => ({
+      const normalizeComment = (c: any, isReply = false) => ({
         id: String(c.id),
         message: c.message ?? '',
         authorName: c.from?.name ?? 'Anonymous',
@@ -53,12 +53,24 @@ export async function GET(req: NextRequest) {
         createdTime: c.createdTime ?? c.created_time,
         isHidden: c.isHidden ?? false,
         isLiked: c.isLiked ?? false,
-        canReply: c.canReply ?? true,
+        canReply: isReply ? false : (c.canReply ?? true),
         canDelete: c.canDelete ?? false,
         canHide: c.canHide ?? true,
         canLike: c.canLike ?? true,
         platform: c.platform ?? 'facebook',
-      }))
+        isReply,
+      })
+
+      // Flatten comments + their nested replies so owner replies are visible
+      const normalized: ReturnType<typeof normalizeComment>[] = []
+      for (const c of comments) {
+        normalized.push(normalizeComment(c, false))
+        const replies: any[] = Array.isArray(c.replies?.data) ? c.replies.data
+          : Array.isArray(c.replies) ? c.replies : []
+        for (const r of replies) {
+          normalized.push(normalizeComment(r, true))
+        }
+      }
 
       return NextResponse.json({ comments: normalized, nextCursor })
     }
