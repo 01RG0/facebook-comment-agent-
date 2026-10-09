@@ -3,6 +3,7 @@ import { verifyZernioSignature } from '@/lib/zernio/signature'
 import { processCommentJob } from '@/lib/queue/comment-worker'
 import { processDmJob } from '@/lib/queue/dm-worker'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { isWithinSchedule } from '@/lib/schedule'
 import { logger } from '@/lib/logger'
 import type { ZernioCommentPayload } from '@/types/zernio'
 
@@ -291,6 +292,27 @@ export async function POST(req: NextRequest) {
   if (!page || !page.agent_enabled) {
     logger.info({ accountId: payload.account.id, pageFound: !!page, agentEnabled: page?.agent_enabled }, 'Webhook ignored: page not found or agent disabled')
     return NextResponse.json({ status: 'ignored' })
+  }
+
+  // Schedule check: skip if outside configured time windows
+  {
+    const { data: scheduleSettings } = await db
+      .from('settings')
+      .select('schedule_enabled, schedule_timezone, schedule_slots')
+      .eq('page_id', page.id)
+      .maybeSingle()
+
+    if (scheduleSettings?.schedule_enabled) {
+      const inWindow = isWithinSchedule(
+        true,
+        scheduleSettings.schedule_timezone ?? 'UTC',
+        (scheduleSettings.schedule_slots as any[]) ?? []
+      )
+      if (!inWindow) {
+        logger.info({ pageId: page.id, timezone: scheduleSettings.schedule_timezone }, 'Comment ignored: outside schedule window')
+        return NextResponse.json({ status: 'ignored', reason: 'outside_schedule' })
+      }
+    }
   }
 
   // j. If page.fb_page_id is null or starts with 'zernio:':

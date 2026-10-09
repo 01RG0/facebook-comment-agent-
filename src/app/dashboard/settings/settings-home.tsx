@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import AiSettingsForm from '@/components/ai-settings-form'
 import TeamMembersPanel from '@/components/team-members-panel'
 import KnowledgeBasePanel from '@/components/knowledge-base-panel'
+import SchedulePanel from '@/components/schedule-panel'
 
 interface Page { id: string; page_name: string }
 
@@ -48,6 +49,7 @@ export default function SettingsHome() {
             initialSettings={settings ?? null}
           />
 
+          {selectedPageId && <SchedulePanel pageId={selectedPageId} initialSettings={settings ?? null} />}
           {selectedPageId && <KnowledgeBasePanel pageId={selectedPageId} />}
           {selectedPageId && <TeamMembersPanel pageId={selectedPageId} />}
         </>

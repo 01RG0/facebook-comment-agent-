@@ -3,6 +3,7 @@ import { createAiProvider } from '@/lib/ai/factory'
 import { sendZernioConversationMessage } from '@/lib/zernio/client'
 import { validateExternalUrl } from '@/lib/utils'
 import { decrypt } from '@/lib/crypto'
+import { isWithinSchedule } from '@/lib/schedule'
 import { logger } from '@/lib/logger'
 import type { AiProviderName } from '@/lib/ai/types'
 
@@ -49,7 +50,7 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
 
     const { data: settings } = await db
       .from('settings')
-      .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_ids, reply_instructions, reply_language, review_mode_enabled, dm_agent_enabled, dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length, dm_ai_provider, dm_ai_model, dm_preferred_key_id')
+      .select('ai_provider, ai_model, custom_base_url, ai_api_key_enc, ai_api_key_iv, preferred_ai_key_ids, reply_instructions, reply_language, review_mode_enabled, dm_agent_enabled, dm_reply_instructions, dm_reply_language, dm_reply_tone, dm_reply_length, dm_ai_provider, dm_ai_model, dm_preferred_key_id, schedule_enabled, schedule_timezone, schedule_slots')
       .eq('page_id', pageId)
       .maybeSingle()
 
@@ -57,6 +58,19 @@ export async function processDmJob(data: DmJobPayload): Promise<void> {
     if (settings?.dm_agent_enabled === false) {
       log.info('DM agent disabled for this page, skipping')
       return
+    }
+
+    // Schedule check
+    if (settings?.schedule_enabled) {
+      const inWindow = isWithinSchedule(
+        true,
+        (settings.schedule_timezone as string) ?? 'UTC',
+        (settings.schedule_slots as any[]) ?? []
+      )
+      if (!inWindow) {
+        log.info({ timezone: settings.schedule_timezone }, 'DM ignored: outside schedule window')
+        return
+      }
     }
 
     if (settings?.review_mode_enabled) {
